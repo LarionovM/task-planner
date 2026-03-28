@@ -52,7 +52,7 @@ echo ""
 echo -e "${YELLOW}=== Настройка ===${NC}"
 echo ""
 
-read -p "Введите ваш домен (например, task-planner.cv): " DOMAIN
+read -p "Введите ваш домен (например, planner.example.com): " DOMAIN
 if [ -z "$DOMAIN" ]; then
     echo -e "${RED}Домен обязателен!${NC}"
     exit 1
