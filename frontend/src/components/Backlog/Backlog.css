@@ -1,0 +1,380 @@
+.backlog-screen {
+  padding-top: 8px;
+}
+
+.backlog-filters {
+  margin-bottom: 12px;
+}
+
+.backlog-search {
+  margin-bottom: 8px;
+}
+
+.backlog-filter-row {
+  display: flex;
+  gap: 8px;
+}
+
+.backlog-filter-select {
+  flex: 1;
+  font-size: 13px;
+  padding: 8px;
+}
+
+/* Сортировка */
+.backlog-sort-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.backlog-sort-btn {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 12px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s, border-color 0.15s;
+  text-align: center;
+}
+
+.backlog-sort-btn:hover {
+  opacity: 0.8;
+}
+
+.backlog-sort-btn.active {
+  opacity: 1;
+  border-color: var(--accent);
+  background: var(--bg-input);
+}
+
+/* Секции: Регулярные / Разовые */
+.backlog-section {
+  margin-bottom: 12px;
+}
+
+.backlog-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.backlog-section-header:hover {
+  background: var(--bg-hover);
+}
+
+.backlog-section-arrow {
+  font-size: 14px;
+  color: var(--text-muted);
+  width: 14px;
+}
+
+.backlog-section-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.backlog-section-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-input);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.backlog-section-body {
+  margin-top: 6px;
+}
+
+.backlog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.backlog-item {
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.backlog-item:hover {
+  border-color: var(--accent);
+}
+
+.backlog-item-indent {
+  margin-left: 20px;
+  border-left: 2px solid var(--accent);
+}
+
+.backlog-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backlog-priority {
+  font-size: 12px;
+}
+
+.backlog-task-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.backlog-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.backlog-cat {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.backlog-badge {
+  font-size: 14px;
+}
+
+/* Эпики */
+.backlog-epic {
+  margin-bottom: 8px;
+}
+
+.backlog-epic-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.backlog-epic-header:hover {
+  border-color: var(--accent);
+}
+
+.backlog-epic-arrow {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 14px;
+}
+
+.backlog-epic-icon {
+  font-size: 18px;
+}
+
+.backlog-epic-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.backlog-epic-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.backlog-epic-tasks {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.backlog-epic-empty {
+  margin-left: 20px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Форма */
+.backlog-dialog {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.backlog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.backlog-form .label {
+  margin-top: 8px;
+}
+
+.backlog-form-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.backlog-form-col {
+  flex: 1;
+}
+
+.backlog-form-col .label {
+  margin-top: 0;
+}
+
+.backlog-form-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+}
+
+.backlog-recur-section {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.backlog-recur-presets {
+  display: flex;
+  gap: 6px;
+}
+
+.backlog-recur-presets .btn {
+  flex: 1;
+}
+
+.backlog-recur-days {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* Переключатель вида */
+.backlog-view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.backlog-view-btn {
+  padding: 4px 8px;
+  font-size: 14px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.15s, background 0.15s;
+  line-height: 1;
+}
+
+.backlog-view-btn:hover {
+  opacity: 0.7;
+}
+
+.backlog-view-btn.active {
+  opacity: 1;
+  background: var(--bg-card);
+}
+
+/* Табличный вид */
+.backlog-table-wrap {
+  overflow-x: auto;
+  margin-top: 4px;
+}
+
+.backlog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.backlog-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.backlog-table-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.backlog-table-row:hover {
+  background: var(--bg-hover);
+}
+
+.backlog-table-row td {
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.backlog-table-priority {
+  font-size: 12px;
+  text-align: center;
+}
+
+.backlog-table-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.backlog-badge-sm {
+  font-size: 10px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.backlog-table-epic {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+
+.backlog-table-cat {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.backlog-table-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.backlog-table-deadline {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

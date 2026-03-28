@@ -1,0 +1,82 @@
+.schedule-screen {
+  padding-top: 8px;
+}
+
+.schedule-days {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-day-simple {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.schedule-day-simple.day-off {
+  opacity: 0.6;
+}
+
+.schedule-day-name {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.schedule-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.schedule-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.schedule-toggle-label {
+  color: var(--text-secondary);
+}
+
+.schedule-times {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.schedule-time-group {
+  flex: 1;
+}
+
+.schedule-select {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.schedule-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.spam-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spam-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.spam-field .input {
+  max-width: 160px;
+}

@@ -1,0 +1,38 @@
+# Task Planner Bot — systemd service
+# Копировать в /etc/systemd/system/task-planner.service
+# Затем: sudo systemctl daemon-reload && sudo systemctl enable --now task-planner
+
+[Unit]
+Description=Task Planner Bot (FastAPI + aiogram)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=taskplanner
+Group=taskplanner
+WorkingDirectory=/opt/task-planner
+EnvironmentFile=/opt/task-planner/.env
+
+# Запуск через venv
+ExecStart=/opt/task-planner/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+# Перезапуск при сбое
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Безопасность
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/task-planner/data
+
+# Логирование через journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=task-planner
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,378 @@
+.calendar-screen {
+  padding-top: 8px;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  margin-bottom: 8px;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-week-label {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.calendar-week-label:hover {
+  color: var(--accent);
+}
+
+.calendar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* Подсказка при drag */
+.calendar-drag-hint {
+  background: var(--accent);
+  color: white;
+  text-align: center;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 8px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.calendar-body {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.calendar-grid {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-day-headers {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.calendar-day-header {
+  text-align: center;
+  padding: 4px 1px;
+  border-radius: var(--radius-sm);
+}
+
+.calendar-day-header.today {
+  background: var(--accent);
+  color: white;
+}
+
+.calendar-day-name {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.calendar-day-date {
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.calendar-day-off {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.calendar-day-header.today .calendar-day-off {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.calendar-columns {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+/* Колонка дня */
+.day-column {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  padding: 1px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.day-off-column {
+  opacity: 0.85;
+}
+
+.day-slot {
+  padding: 1px 0;
+  min-height: 28px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  transition: all 0.15s;
+}
+
+.day-slot:last-child {
+  border-bottom: none;
+}
+
+/* Яркая подсветка при drag — зелёная рамка + фон */
+.day-slot.droppable {
+  background: rgba(99, 102, 241, 0.2);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+/* Во время drag — все слоты подсвечиваются при наведении */
+.is-dragging .day-slot {
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.day-slot-time {
+  font-size: 8px;
+  color: var(--text-muted);
+  position: absolute;
+  top: 0;
+  left: 1px;
+}
+
+/* Блок в календаре */
+.cal-block {
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+  padding: 1px 2px;
+  margin: 0;
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 1.15;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cal-block:hover {
+  border-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.cal-block-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-block-time {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.cal-block-type {
+  font-size: 10px;
+}
+
+.cal-block.status-done {
+  opacity: 0.6;
+  border-left-color: var(--success);
+}
+
+.cal-block.status-failed {
+  border-left-color: var(--danger);
+}
+
+.cal-block.status-skipped {
+  opacity: 0.5;
+  border-left-color: var(--text-muted);
+}
+
+.cal-block.status-active {
+  border-left-color: var(--warning);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.cal-block-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 0;
+  color: var(--danger);
+}
+
+.cal-block:hover .cal-block-delete {
+  opacity: 1;
+}
+
+/* Бэклог-панель */
+.backlog-panel {
+  width: 180px;
+  min-width: 180px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  padding: 8px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.backlog-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.backlog-sort-bar {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.backlog-sort-btn {
+  flex: 1;
+  padding: 3px 0;
+  font-size: 12px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.backlog-sort-btn:hover {
+  opacity: 0.8;
+}
+
+.backlog-sort-btn.active {
+  opacity: 1;
+  border-color: var(--accent);
+  background: var(--bg-input);
+}
+
+.backlog-panel-item {
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  font-size: 12px;
+  cursor: grab;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.backlog-panel-item:hover {
+  background: var(--bg-hover);
+}
+
+.backlog-panel-item:active {
+  cursor: grabbing;
+}
+
+.backlog-drag-preview {
+  padding: 8px 12px;
+  background: var(--accent);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Кнопка добавить в слоте */
+.day-slot-add {
+  width: 100%;
+  background: none;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.day-slot:hover .day-slot-add {
+  opacity: 1;
+  border-color: var(--border);
+}
+
+.day-slot-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Форма блока */
+.block-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.block-form .label {
+  margin-top: 8px;
+}
+
+.block-form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.block-form-row > * {
+  flex: 1;
+}
+
+@media (max-width: 600px) {
+  .calendar-columns {
+    grid-template-columns: 1fr;
+  }
+  .day-column {
+    min-height: 0;
+  }
+  .backlog-panel {
+    width: 100%;
+    min-width: unset;
+    max-height: 200px;
+  }
+  .calendar-body {
+    flex-direction: column;
+  }
+}
