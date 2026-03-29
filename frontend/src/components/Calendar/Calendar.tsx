@@ -1,6 +1,6 @@
 // Экран 5: Календарь недели — drag & drop, блоки, временная шкала
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -44,8 +44,17 @@ interface MoveBlockInfo {
   newTime: string
 }
 
+type ViewMode = 'week' | 'day'
+
 export default function Calendar() {
   const { blocks, tasks, categories, schedule, weekStart, setWeekStart, loadBlocks, loadTasks, user } = useStore()
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    window.innerWidth <= 600 ? 'day' : 'week'
+  )
+  const [selectedDayIndex, setSelectedDayIndex] = useState(() => {
+    const today = new Date().getDay()
+    return today === 0 ? 6 : today - 1 // 0=Пн, 6=Вс
+  })
   const [showBacklog, setShowBacklog] = useState(false)
   const [showBlockForm, setShowBlockForm] = useState(false)
   const [editBlock, setEditBlock] = useState<TaskBlock | null>(null)
@@ -128,7 +137,41 @@ export default function Calendar() {
     const diff = d.getDate() - day + (day === 0 ? -6 : 1)
     const monday = new Date(d.setDate(diff))
     setWeekStart(formatLocalDate(monday))
+    const today = new Date().getDay()
+    setSelectedDayIndex(today === 0 ? 6 : today - 1)
   }
+
+  // Навигация по дням (для дневного вида)
+  const prevDay = useCallback(() => {
+    if (selectedDayIndex > 0) {
+      setSelectedDayIndex(selectedDayIndex - 1)
+    } else {
+      // Перейти на предыдущую неделю, воскресенье
+      const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() - 7)
+      setWeekStart(formatLocalDate(d))
+      setSelectedDayIndex(6)
+    }
+  }, [selectedDayIndex, weekStart])
+
+  const nextDay = useCallback(() => {
+    if (selectedDayIndex < 6) {
+      setSelectedDayIndex(selectedDayIndex + 1)
+    } else {
+      // Перейти на следующую неделю, понедельник
+      const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() + 7)
+      setWeekStart(formatLocalDate(d))
+      setSelectedDayIndex(0)
+    }
+  }, [selectedDayIndex, weekStart])
+
+  const toToday = useCallback(() => {
+    const d = new Date(); const day = d.getDay()
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+    const monday = new Date(d); monday.setDate(diff)
+    setWeekStart(formatLocalDate(monday))
+    const todayIdx = d.getDay()
+    setSelectedDayIndex(todayIdx === 0 ? 6 : todayIdx - 1)
+  }, [])
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
@@ -242,15 +285,41 @@ export default function Calendar() {
     return `${DAY_SHORT[dayIdx]} ${d.getDate()}`
   }
 
+  // Форматирование даты для дневного вида
+  const formatDayLabel = (dayStr: string) => {
+    const d = new Date(dayStr + 'T00:00:00')
+    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', weekday: 'long' }
+    return d.toLocaleDateString('ru', opts)
+  }
+
   return (
     <div className={`calendar-screen ${isDragging ? 'is-dragging' : ''}`}>
       <div className="calendar-header">
         <div className="calendar-nav">
-          <button className="btn-icon" onClick={prevWeek}>◀</button>
-          <button className="calendar-week-label" onClick={toCurrentWeek}>{formatWeekRange()}</button>
-          <button className="btn-icon" onClick={nextWeek}>▶</button>
+          {viewMode === 'week' ? (
+            <>
+              <button className="btn-icon" onClick={prevWeek}>◀</button>
+              <button className="calendar-week-label" onClick={toCurrentWeek}>{formatWeekRange()}</button>
+              <button className="btn-icon" onClick={nextWeek}>▶</button>
+            </>
+          ) : (
+            <>
+              <button className="btn-icon" onClick={prevDay}>◀</button>
+              <button className="calendar-week-label" onClick={toToday}>
+                {weekDays[selectedDayIndex] && formatDayLabel(weekDays[selectedDayIndex])}
+              </button>
+              <button className="btn-icon" onClick={nextDay}>▶</button>
+            </>
+          )}
         </div>
         <div className="calendar-actions">
+          <button
+            className={`btn btn-sm ${viewMode === 'day' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode(viewMode === 'week' ? 'day' : 'week')}
+            title={viewMode === 'week' ? 'Дневной вид' : 'Недельный вид'}
+          >
+            {viewMode === 'week' ? '📅' : '📆'}
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => setShowBacklog(!showBacklog)} title="Панель задач для перетаскивания">
             {showBacklog ? '✕' : '📋'}
           </button>
@@ -270,37 +339,82 @@ export default function Calendar() {
         <div className="calendar-body">
           {showBacklog && <BacklogPanel tasks={tasks} catMap={catMap} />}
 
-          <div className="calendar-grid">
-            <div className="calendar-day-headers">
-              {weekDays.map((day, i) => {
-                const d = new Date(day + 'T00:00:00')
-                const isToday = day === formatLocalDate(new Date())
-                const scheduleDay = schedule.find((s) => s.day_of_week === i)
-                return (
-                  <div key={day} className={`calendar-day-header ${isToday ? 'today' : ''}`}>
-                    <span className="calendar-day-name">{DAY_SHORT[i]}</span>
-                    <span className="calendar-day-date">{d.getDate()}</span>
-                    {scheduleDay?.is_day_off && <span className="calendar-day-off">вых</span>}
-                  </div>
-                )
-              })}
-            </div>
+          {viewMode === 'week' ? (
+            /* Недельный вид */
+            <div className="calendar-grid">
+              <div className="calendar-day-headers">
+                {weekDays.map((day, i) => {
+                  const d = new Date(day + 'T00:00:00')
+                  const isToday = day === formatLocalDate(new Date())
+                  const scheduleDay = schedule.find((s) => s.day_of_week === i)
+                  return (
+                    <div key={day} className={`calendar-day-header ${isToday ? 'today' : ''}`}>
+                      <span className="calendar-day-name">{DAY_SHORT[i]}</span>
+                      <span className="calendar-day-date">{d.getDate()}</span>
+                      {scheduleDay?.is_day_off && <span className="calendar-day-off">вых</span>}
+                    </div>
+                  )
+                })}
+              </div>
 
-            <div className="calendar-columns">
-              {weekDays.map((day, i) => (
+              <div className="calendar-columns">
+                {weekDays.map((day, i) => (
+                  <DayColumn
+                    key={day} day={day} dayOfWeek={i}
+                    blocks={blocksByDay[day] || []}
+                    schedule={schedule.find((s) => s.day_of_week === i)}
+                    taskMap={taskMap} catMap={catMap}
+                    dayStartTime={effectiveStart}
+                    dayEndTime={effectiveEnd}
+                    dragBlockId={dragBlock?.id ?? null}
+                    onBlockClick={handleBlockClick} onAddBlock={handleAddBlock} onDeleteBlock={handleDeleteBlock}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* Дневной вид */
+            <div className="calendar-day-view">
+              {/* Мини-полоска дней для быстрого переключения */}
+              <div className="day-view-strip">
+                {weekDays.map((day, i) => {
+                  const d = new Date(day + 'T00:00:00')
+                  const isToday = day === formatLocalDate(new Date())
+                  const isSelected = i === selectedDayIndex
+                  const hasBlocks = (blocksByDay[day] || []).length > 0
+                  const scheduleDay = schedule.find((s) => s.day_of_week === i)
+                  return (
+                    <button
+                      key={day}
+                      className={`day-view-strip-item ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''}`}
+                      onClick={() => setSelectedDayIndex(i)}
+                    >
+                      <span className="strip-day-name">{DAY_SHORT[i]}</span>
+                      <span className="strip-day-date">{d.getDate()}</span>
+                      {hasBlocks && <span className="strip-dot">●</span>}
+                      {scheduleDay?.is_day_off && <span className="strip-off">вых</span>}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Одна колонка на весь экран */}
+              <div className="day-view-column">
                 <DayColumn
-                  key={day} day={day} dayOfWeek={i}
-                  blocks={blocksByDay[day] || []}
-                  schedule={schedule.find((s) => s.day_of_week === i)}
+                  key={weekDays[selectedDayIndex]}
+                  day={weekDays[selectedDayIndex]}
+                  dayOfWeek={selectedDayIndex}
+                  blocks={blocksByDay[weekDays[selectedDayIndex]] || []}
+                  schedule={schedule.find((s) => s.day_of_week === selectedDayIndex)}
                   taskMap={taskMap} catMap={catMap}
                   dayStartTime={effectiveStart}
                   dayEndTime={effectiveEnd}
                   dragBlockId={dragBlock?.id ?? null}
                   onBlockClick={handleBlockClick} onAddBlock={handleAddBlock} onDeleteBlock={handleDeleteBlock}
                 />
-              ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <DragOverlay dropAnimation={null}>
