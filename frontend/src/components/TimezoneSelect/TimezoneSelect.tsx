@@ -60,15 +60,6 @@ function getOffsetMinutes(tz: string): number {
   }
 }
 
-/** Дружественное отображение */
-function formatTimezone(tz: string): string {
-  const data = TIMEZONE_DATA.find((t) => t.tz === tz)
-  const offset = getUtcOffset(tz)
-  if (data) return `${offset} (${data.cities})`
-  const parts = tz.split('/')
-  return `${offset} (${parts[parts.length - 1].replace(/_/g, ' ')})`
-}
-
 export default function TimezoneSelect() {
   const { updateSettings, setScreen } = useStore()
   const detectedTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
