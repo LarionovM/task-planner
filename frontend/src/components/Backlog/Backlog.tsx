@@ -601,18 +601,19 @@ export default function Backlog() {
                   <div className="backlog-form-checks">
                     <label className="schedule-toggle">
                       <input type="checkbox" checked={formPomodoro} onChange={(e) => setFormPomodoro(e.target.checked)} />
-                      <span className="schedule-toggle-label">🍅 Pomodoro (25+5 мин)</span>
+                      <span className="schedule-toggle-label">🍅 Pomodoro</span>
+                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Разбивает задачу на интервалы: 25 мин фокуса + 5 мин перерыв. Бот напомнит о каждом переключении.</span></span>
                     </label>
                     <label className="schedule-toggle">
                       <input type="checkbox" checked={formGrouping} onChange={(e) => setFormGrouping(e.target.checked)} />
-                      <span className="schedule-toggle-label">📦 Группировка с другими задачами</span>
+                      <span className="schedule-toggle-label">📦 Группировка</span>
+                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Разрешить объединять эту задачу с другими в один блок в календаре. Удобно для мелких задач.</span></span>
                     </label>
-                    <span className="hint" style={{ marginLeft: 22, marginTop: -2 }}>Можно объединять с другими задачами в один блок</span>
                     <label className="schedule-toggle">
                       <input type="checkbox" checked={formMultiPerBlock} onChange={(e) => setFormMultiPerBlock(e.target.checked)} />
                       <span className="schedule-toggle-label">🔄 Мульти-задача</span>
+                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Несколько экземпляров задачи в одном блоке. Например, 5 уроков подряд или 3 подхода.</span></span>
                     </label>
-                    <span className="hint" style={{ marginLeft: 22, marginTop: -2 }}>Несколько экземпляров задачи в одном блоке (например, 5 уроков подряд)</span>
                   </div>
 
                   <label className="label" style={{ marginTop: 12 }}>Тип устройства</label>
@@ -634,10 +635,12 @@ export default function Backlog() {
                     <label className="schedule-toggle">
                       <input type="checkbox" checked={formSpam} onChange={(e) => setFormSpam(e.target.checked)} />
                       <span className="schedule-toggle-label">📢 Настойчивые напоминания</span>
+                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Если проигноришь уведомление о завершении блока, бот будет напоминать с нарастающей частотой, пока не ответишь.</span></span>
                     </label>
                     <label className="schedule-toggle">
                       <input type="checkbox" checked={formRecurring} onChange={(e) => setFormRecurring(e.target.checked)} />
                       <span className="schedule-toggle-label">🔁 Повторяемая</span>
+                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Задача повторяется в выбранные дни недели. При автораспределении будет ставиться в каждый выбранный день.</span></span>
                     </label>
                   </div>
 

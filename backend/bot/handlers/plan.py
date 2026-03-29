@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date, datetime, timedelta, time
+from zoneinfo import ZoneInfo
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -218,9 +219,15 @@ async def _format_day_plan_grouped(
 @router.message(Command("plan"))
 async def cmd_plan(message: Message, allowed_user: AllowedUser):
     """План на день. Опции: /plan, /plan завтра, /plan 2 (послезавтра)."""
+    # Определяем "сегодня" в часовом поясе пользователя, а не сервера
+    async with async_session() as session:
+        _user = await get_or_create_user(session, allowed_user.telegram_id)
+        _tz = ZoneInfo(_user.timezone or "Europe/Moscow")
+    user_now = datetime.now(_tz)
+
     text = (message.text or "").strip()
     parts = text.split(maxsplit=1)
-    target_day = date.today()
+    target_day = user_now.date()
     day_label = "сегодня"
 
     if len(parts) > 1:
@@ -355,7 +362,12 @@ async def _send_week_plan(message: Message, allowed_user: AllowedUser):
 @router.message(Command("next"))
 async def cmd_next(message: Message, allowed_user: AllowedUser):
     """Ближайший предстоящий блок."""
-    now = datetime.now()
+    async with async_session() as session:
+        _user = await get_or_create_user(session, allowed_user.telegram_id)
+        user_tz = ZoneInfo(_user.timezone or "Europe/Moscow")
+
+    # Используем часовой пояс пользователя, а не сервера
+    now = datetime.now(user_tz)
     today = now.date()
     current_time = now.time()
 
@@ -415,7 +427,7 @@ async def cmd_next(message: Message, allowed_user: AllowedUser):
             h, m = map(int, block_time.split(":")[:2])
             block_time = time(h, m)
 
-        block_dt = datetime.combine(next_day, block_time)
+        block_dt = datetime.combine(next_day, block_time, tzinfo=user_tz)
         delta = block_dt - now
 
         if delta.total_seconds() < 60:
