@@ -16,5 +16,4 @@ frontend/dist/
 .claude/
 .idea/
 .server_pid
-plan.md
 CLAUDE.md

@@ -36,9 +36,11 @@ settings = Settings()
 
 # === Константы ===
 
-# Pomodoro
+# Помодоро (дефолтные значения, пользователь может менять в настройках)
 POMODORO_WORK_MIN: int = 25
-POMODORO_BREAK_MIN: int = 5
+POMODORO_SHORT_BREAK_MIN: int = 5
+POMODORO_LONG_BREAK_MIN: int = 30
+POMODORO_CYCLES_BEFORE_LONG: int = 4
 
 # Спам — таймаут перед началом (секунды)
 SPAM_QUESTIONNAIRE_TIMEOUT_SEC: int = 120

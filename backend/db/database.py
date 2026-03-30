@@ -60,8 +60,11 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     # Миграции — добавляем новые колонки если их нет
+    from sqlalchemy import text
+
     async with engine.begin() as conn:
         migrations = [
+            # Старые миграции (v1.0 → v1.1)
             "ALTER TABLE tasks ADD COLUMN is_epic BOOLEAN DEFAULT 0",
             "ALTER TABLE tasks ADD COLUMN epic_id INTEGER REFERENCES tasks(id)",
             "ALTER TABLE users ADD COLUMN day_start_time TIME DEFAULT '08:00'",
@@ -71,13 +74,34 @@ async def init_db() -> None:
             "ALTER TABLE tasks ADD COLUMN device_type TEXT DEFAULT 'other'",
             "ALTER TABLE spam_config ADD COLUMN empty_slots_enabled BOOLEAN DEFAULT 1",
             "ALTER TABLE spam_config ADD COLUMN empty_slots_interval_min INTEGER DEFAULT 30",
+
+            # === v1.2.0 — помодоро-центричная переработка ===
+
+            # User: настройки помодоро
+            "ALTER TABLE users ADD COLUMN pomodoro_work_min INTEGER DEFAULT 25",
+            "ALTER TABLE users ADD COLUMN pomodoro_short_break_min INTEGER DEFAULT 5",
+            "ALTER TABLE users ADD COLUMN pomodoro_long_break_min INTEGER DEFAULT 30",
+            "ALTER TABLE users ADD COLUMN pomodoro_cycles_before_long INTEGER DEFAULT 4",
+            "ALTER TABLE users ADD COLUMN reminders_paused_until DATETIME",
+            "ALTER TABLE users ADD COLUMN reminders_stopped BOOLEAN DEFAULT 0",
+
+            # Task: новый статус + назначенная дата
+            "ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'grooming'",
+            "ALTER TABLE tasks ADD COLUMN scheduled_date DATE",
+
+            # TaskBlock: помодоро-сессия (task_id вместо task_ids)
+            "ALTER TABLE task_blocks ADD COLUMN task_id INTEGER REFERENCES tasks(id)",
+            "ALTER TABLE task_blocks ADD COLUMN pomodoro_number INTEGER DEFAULT 1",
         ]
         for sql in migrations:
             try:
-                await conn.execute(__import__("sqlalchemy").text(sql))
+                await conn.execute(text(sql))
                 logger.info(f"Миграция: {sql}")
             except Exception:
                 pass  # Колонка уже существует
+
+        # Удаляем ненужные колонки из spam_config (SQLite не поддерживает DROP COLUMN до 3.35)
+        # Оставим их — просто не используем
 
     logger.info("База данных инициализирована")
 
