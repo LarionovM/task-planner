@@ -394,6 +394,110 @@ sudo bash /tmp/task-planner/setup.sh
 
 ---
 
+## v1.2.0 — Помодоро-центричная переработка — ЗАВЕРШЁН
+
+Полная переработка архитектуры: от блоков с типами длительности к помодоро-циклам как центральной механике.
+
+### Концепция:
+- **Помодоро** — автоматические циклы 25+5 мин весь рабочий день
+- **События** (созвоны, встречи) — отдельная сущность, НЕ задача, НЕ в статистике
+- **Задачи** имеют статусы (kanban): grooming → in_progress → blocked → done
+- Задачи назначаются на день, а не на конкретное время — помодоро управляет
+
+### Step 1: Модели и схемы
+- Модель `Event` — name, day, start_time, end_time, category_id, status, reminder_before_min
+- `Task` — новые поля: status, scheduled_date, description, link
+- `TaskBlock` — упрощён: task_id (один), pomodoro_number
+- `User` — настройки помодоро: work_min, short_break_min, long_break_min, cycles_before_long
+- Убрано: duration_type, block_name, is_mixed, task_ids (массив), quiet_start/quiet_end
+- Pydantic v2 схемы обновлены
+
+### Step 2: API
+- `routes/events.py` — полный CRUD для событий (GET по неделе, POST, PATCH, DELETE)
+- `routes/tasks.py` — фильтр по status, scheduled_date
+- `routes/users.py` — настройки помодоро, reminders_paused_until, reminders_stopped
+- Миграции для всех новых колонок
+
+### Step 3: Обработчики бота
+- `/settings` — объединяет /stop, /pause, /resume, /admin (всё через inline-кнопки)
+- `/plan` — навигация по дням через кнопки, показ событий + задач
+- `/backlog` — просмотр задач по статусам, фильтр (сегодня/все), смена статуса, описание+ссылка
+- `callbacks.py` — помодоро flow: выбор задачи, пропуск, завершение события, итог дня
+- Убрана команда `/next`, переработан `/help`
+- 6 команд: start, help, plan, backlog, settings, stats
+
+### Step 4: Scheduler + напоминания
+- `scheduler.py` — полная переработка:
+  - `schedule_pomodoro_cycle()` — планирует весь день помодоро-циклов по рабочим часам
+  - `schedule_event_jobs()` — prep/start/end для событий
+  - `restore_jobs_on_startup()` — восстановление циклов и событий
+  - `_pomodoro_counts` — трекинг номера помодоро за день
+- `reminders.py` — полная переработка:
+  - `send_pomodoro_start()` — выбор задачи из назначенных на день
+  - `send_pomodoro_end_questionnaire()` — опросник + спам при игноре
+  - `send_pomodoro_break()` — короткий или длинный перерыв (каждый 4-й)
+  - `send_event_*()` — уведомления о событиях (prep, start, end)
+  - `send_day_summary()` — помодоро-статистика + перенос незавершённых задач
+  - Раздельный спам для помодоро и событий с разными пулами текстов
+  - 40+ спам-текстов с разными сценариями (юмор, философия, мотивация, ультиматумы)
+
+### Step 5: Фронтенд
+- `types/index.ts` — Event тип, обновлены Task, TaskBlock, User, WeekStats
+- `api/client.ts` — Events CRUD эндпоинты
+- `store/index.ts` — events state, loadEvents()
+- `Settings.tsx` — настройки помодоро (work/short break/long break/cycles), убрано тихое время
+- `Summary.tsx` — помодоро-статистика (done/partial/failed/skipped/total), задачи по статусам
+- `Backlog.tsx` — статус-кнопки, description, link, scheduled_date, убраны: minimal_time, use_pomodoro, allow_grouping, allow_multi_per_block, device_type, preferred_time, reminder_before
+
+### Step 6: Calendar + версионные уведомления
+- **Calendar.tsx** — события на временной шкале + задачи назначенные на день, drag задач на дни
+- **DayColumn.tsx** — события на слотах + секция «Задачи на день» с быстрой сменой статуса
+- **EventForm.tsx** — новая форма создания/редактирования событий (категория, время, напоминание, заметки)
+- **BacklogPanel.tsx** — упрощён: статус-иконки, фильтры (назначенные/готовые), scheduled_date
+- Удалён BlockForm.tsx (заменён на EventForm)
+- **version_notify.py** — авто-рассылка changelog при деплое, ручная рассылка из админки
+- **VersionNotification модель** — отслеживание отправленных уведомлений
+- **admin.py** — кнопка «📢 Рассылка всем» в админ-панели
+- Удалён controls.py (функциональность в settings.py)
+
+### v1.2.0 ключевые файлы (все изменённые):
+**Backend:**
+- `backend/db/models.py` — Event, VersionNotification, обновлены Task, TaskBlock, User
+- `backend/db/database.py` — 10+ миграций
+- `backend/api/schemas.py` — EventCreate/Update/Response, обновлены Task*, User*, Block*
+- `backend/api/routes/events.py` — НОВЫЙ
+- `backend/api/routes/tasks.py` — status/scheduled_date фильтры
+- `backend/api/routes/users.py` — pomodoro settings
+- `backend/bot/handlers/settings.py` — ПЕРЕРАБОТАН (stop/pause/resume/admin через кнопки)
+- `backend/bot/handlers/plan.py` — ПЕРЕРАБОТАН (навигация кнопками)
+- `backend/bot/handlers/backlog.py` — НОВЫЙ
+- `backend/bot/handlers/callbacks.py` — ПЕРЕРАБОТАН (помодоро flow)
+- `backend/bot/handlers/admin.py` — broadcast кнопка
+- `backend/bot/scheduler.py` — ПЕРЕРАБОТАН (помодоро-циклы)
+- `backend/bot/reminders.py` — ПЕРЕРАБОТАН (помодоро + события)
+- `backend/bot/version_notify.py` — НОВЫЙ
+- `backend/bot/__init__.py` — обновлены роутеры и команды
+- `backend/config.py` — 40+ SPAM_TEXTS, SPAM_TEXTS_EVENT, SPAM_TEXTS_EOD
+- `backend/main.py` — version notify при старте
+
+**Frontend:**
+- `frontend/src/types/index.ts` — Event, обновлены все типы
+- `frontend/src/api/client.ts` — Events CRUD
+- `frontend/src/store/index.ts` — events state
+- `frontend/src/components/Calendar/Calendar.tsx` — ПЕРЕРАБОТАН
+- `frontend/src/components/Calendar/DayColumn.tsx` — ПЕРЕРАБОТАН
+- `frontend/src/components/Calendar/EventForm.tsx` — НОВЫЙ
+- `frontend/src/components/Calendar/BacklogPanel.tsx` — ПЕРЕРАБОТАН
+- `frontend/src/components/Backlog/Backlog.tsx` — ПЕРЕРАБОТАН
+- `frontend/src/components/Settings/Settings.tsx` — ПЕРЕРАБОТАН
+- `frontend/src/components/Summary/Summary.tsx` — ПЕРЕРАБОТАН
+
+**Удалены:**
+- `backend/bot/handlers/controls.py`
+- `frontend/src/components/Calendar/BlockForm.tsx`
+
+---
+
 ## Известные баги / TODO
 
-- [ ] Task 8 (Duolingo Английский урок, preferred_time=11:00) не группируется с tasks 7,9,10 (preferred_time=11:30) — разные preferred_time
+- [ ] Task 8 (Duolingo Английский урок, preferred_time=11:00) не группируется с tasks 7,9,10 (preferred_time=11:30) — разные preferred_time (неактуально для v1.2.0 — preferred_time удалён)
