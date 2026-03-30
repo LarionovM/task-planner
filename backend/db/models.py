@@ -304,3 +304,14 @@ class Log(Base):
 
     user = relationship("User", back_populates="logs")
     task_block = relationship("TaskBlock", back_populates="logs")
+
+
+class VersionNotification(Base):
+    """Отслеживание отправленных уведомлений о новых версиях."""
+
+    __tablename__ = "version_notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.telegram_id"), nullable=False, index=True)
+    version = Column(String(20), nullable=False)
+    sent_at = Column(DateTime, default=func.now(), nullable=False)

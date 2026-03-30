@@ -1,4 +1,5 @@
-// Экран 5: Календарь недели — drag & drop, блоки, временная шкала
+// Экран 5: Календарь недели — события на временной шкале + задачи на день
+// v1.2.0: помодоро-центричная модель
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
@@ -14,23 +15,23 @@ import {
   type CollisionDetection,
 } from '@dnd-kit/core'
 
-// Гибридная коллизия: сначала проверяем по острию курсора, потом по центру
+// Гибридная коллизия: сначала по курсору, потом по центру
 const hybridCollision: CollisionDetection = (args) => {
   const pointerHits = pointerWithin(args)
   if (pointerHits.length > 0) return pointerHits
   return closestCenter(args)
 }
+
 import { useStore } from '../../store'
 import { api } from '../../api/client'
-import type { TaskBlock, Task, Category } from '../../types'
+import type { Task, Event, Category } from '../../types'
 import DayColumn from './DayColumn'
 import BacklogPanel from './BacklogPanel'
-import BlockForm from './BlockForm'
+import EventForm from './EventForm'
 import './Calendar.css'
 
 const DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
-// Форматирование даты в YYYY-MM-DD без сдвига часового пояса (toISOString конвертит в UTC!)
 function formatLocalDate(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -38,40 +39,32 @@ function formatLocalDate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-interface MoveBlockInfo {
-  block: TaskBlock
-  newDay: string
-  newTime: string
-}
-
 type ViewMode = 'week' | 'day'
 
 export default function Calendar() {
-  const { blocks, tasks, categories, schedule, weekStart, setWeekStart, loadBlocks, loadTasks, user } = useStore()
+  const {
+    events, tasks, categories, schedule, weekStart, setWeekStart,
+    loadEvents, loadTasks, user,
+  } = useStore()
+
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     window.innerWidth <= 600 ? 'day' : 'week'
   )
   const [selectedDayIndex, setSelectedDayIndex] = useState(() => {
     const today = new Date().getDay()
-    return today === 0 ? 6 : today - 1 // 0=Пн, 6=Вс
+    return today === 0 ? 6 : today - 1
   })
   const [showBacklog, setShowBacklog] = useState(false)
-  const [showBlockForm, setShowBlockForm] = useState(false)
-  const [editBlock, setEditBlock] = useState<TaskBlock | null>(null)
+  const [showEventForm, setShowEventForm] = useState(false)
+  const [editEvent, setEditEvent] = useState<Event | null>(null)
   const [dragTask, setDragTask] = useState<Task | null>(null)
-  const [dragBlock, setDragBlock] = useState<TaskBlock | null>(null)
-  const [dragEpic, setDragEpic] = useState<{ epic: Task; epicTasks: Task[] } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const [dropDay, setDropDay] = useState<string>('')
   const [dropTime, setDropTime] = useState<string>('')
-  const [isDragging, setIsDragging] = useState(false)
-  const [preselectedTaskIds, setPreselectedTaskIds] = useState<number[]>([])
-  const [showConfirm, setShowConfirm] = useState<'auto' | 'carry' | 'clear' | null>(null)
-  const [moveBlock, setMoveBlock] = useState<MoveBlockInfo | null>(null)
-  const [movingSaving, setMovingSaving] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  useEffect(() => { loadBlocks(); loadTasks() }, [weekStart])
+  useEffect(() => { loadEvents(); loadTasks() }, [weekStart])
 
   const weekDays = useMemo(() => {
     const start = new Date(weekStart + 'T00:00:00')
@@ -81,48 +74,54 @@ export default function Calendar() {
     })
   }, [weekStart])
 
-  const blocksByDay = useMemo(() => {
-    const map: Record<string, TaskBlock[]> = {}
+  // События по дням
+  const eventsByDay = useMemo(() => {
+    const map: Record<string, Event[]> = {}
     weekDays.forEach((d) => (map[d] = []))
-    blocks.forEach((b) => { if (map[b.day]) map[b.day].push(b) })
+    events.forEach((e) => { if (map[e.day]) map[e.day].push(e) })
     return map
-  }, [blocks, weekDays])
+  }, [events, weekDays])
 
-  const taskMap = useMemo(() => {
-    const m: Record<number, Task> = {}; tasks.forEach((t) => (m[t.id] = t)); return m
-  }, [tasks])
+  // Задачи назначенные на конкретные дни
+  const tasksByDay = useMemo(() => {
+    const map: Record<string, Task[]> = {}
+    weekDays.forEach((d) => (map[d] = []))
+    tasks.forEach((t) => {
+      if (t.scheduled_date && map[t.scheduled_date] && t.status !== 'done') {
+        map[t.scheduled_date].push(t)
+      }
+    })
+    return map
+  }, [tasks, weekDays])
 
   const catMap = useMemo(() => {
-    const m: Record<number, Category> = {}; categories.forEach((c) => (m[c.id] = c)); return m
+    const m: Record<number, Category> = {}
+    categories.forEach((c) => (m[c.id] = c))
+    return m
   }, [categories])
 
-  // Расширение временных рамок если есть блоки за пределами дня
+  // Расширение временных рамок если есть события за пределами дня
   const [effectiveStart, effectiveEnd] = useMemo(() => {
     let startMin = user?.day_start_time || '08:00'
     let endMin = user?.day_end_time || '23:50'
 
-    for (const block of blocks) {
-      const bTime = block.start_time
-      if (bTime < startMin) {
-        // Округлить вниз до 30 мин
-        const [h, m] = bTime.split(':').map(Number)
+    for (const ev of events) {
+      if (ev.start_time < startMin) {
+        const [h, m] = ev.start_time.split(':').map(Number)
         const rounded = Math.floor(m / 30) * 30
         startMin = `${String(h).padStart(2, '0')}:${String(rounded).padStart(2, '0')}`
       }
-      // Конец блока
-      const [bh, bm] = bTime.split(':').map(Number)
-      const dur = block.duration_min || block.max_duration_min || 60
-      const endMins = bh * 60 + bm + dur
-      const endH = Math.min(23, Math.floor(endMins / 60))
-      const endM = Math.ceil((endMins % 60) / 30) * 30
-      const blockEnd = endM >= 60
-        ? `${String(endH + 1).padStart(2, '0')}:00`
-        : `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
-      if (blockEnd > endMin) endMin = blockEnd
+      if (ev.end_time > endMin) {
+        const [h, m] = ev.end_time.split(':').map(Number)
+        const rounded = Math.ceil(m / 30) * 30
+        const endH = rounded >= 60 ? h + 1 : h
+        const endM = rounded >= 60 ? 0 : rounded
+        endMin = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+      }
     }
 
     return [startMin, endMin]
-  }, [blocks, user?.day_start_time, user?.day_end_time])
+  }, [events, user?.day_start_time, user?.day_end_time])
 
   const prevWeek = () => {
     const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() - 7)
@@ -141,12 +140,10 @@ export default function Calendar() {
     setSelectedDayIndex(today === 0 ? 6 : today - 1)
   }
 
-  // Навигация по дням (для дневного вида)
   const prevDay = useCallback(() => {
     if (selectedDayIndex > 0) {
       setSelectedDayIndex(selectedDayIndex - 1)
     } else {
-      // Перейти на предыдущую неделю, воскресенье
       const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() - 7)
       setWeekStart(formatLocalDate(d))
       setSelectedDayIndex(6)
@@ -157,7 +154,6 @@ export default function Calendar() {
     if (selectedDayIndex < 6) {
       setSelectedDayIndex(selectedDayIndex + 1)
     } else {
-      // Перейти на следующую неделю, понедельник
       const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() + 7)
       setWeekStart(formatLocalDate(d))
       setSelectedDayIndex(0)
@@ -176,92 +172,77 @@ export default function Calendar() {
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     setDragTask(null)
-    setDragBlock(null)
-    setDragEpic(null)
     if (active.data.current?.type === 'task') {
       setDragTask(active.data.current.task)
       setIsDragging(true)
-    } else if (active.data.current?.type === 'block') {
-      setDragBlock(active.data.current.block)
-      setIsDragging(true)
-    } else if (active.data.current?.type === 'epic') {
-      setDragEpic({ epic: active.data.current.epic, epicTasks: active.data.current.epicTasks })
-      setIsDragging(true)
     }
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     const droppedTask = dragTask
-    const droppedBlock = dragBlock
-    const droppedEpic = dragEpic
     setDragTask(null)
-    setDragBlock(null)
-    setDragEpic(null)
     setIsDragging(false)
 
-    if (!over) return
+    if (!over || !droppedTask) return
     const overData = over.data.current
 
-    // Задача из бэклога → слот
+    // Задача из бэклога -> день (назначить scheduled_date)
+    if (active.data.current?.type === 'task' && overData?.type === 'day-drop') {
+      const targetDay = overData.day as string
+      try {
+        await api.updateTask(droppedTask.id, { scheduled_date: targetDay })
+        await loadTasks()
+      } catch (e: any) {
+        alert(e.message || 'Ошибка назначения задачи')
+      }
+    }
+
+    // Задача из бэклога -> слот (создать событие)
     if (active.data.current?.type === 'task' && overData?.type === 'slot') {
-      setDropDay(overData.day)
-      setDropTime(overData.time)
-      setEditBlock(null)
-      setPreselectedTaskIds(droppedTask ? [droppedTask.id] : [])
-      setShowBlockForm(true)
-    }
-
-    // Эпик из бэклога → слот (все задачи эпика)
-    if (active.data.current?.type === 'epic' && overData?.type === 'slot' && droppedEpic) {
-      setDropDay(overData.day)
-      setDropTime(overData.time)
-      setEditBlock(null)
-      setPreselectedTaskIds(droppedEpic.epicTasks.map(t => t.id))
-      setShowBlockForm(true)
-    }
-
-    // Блок → другой слот (перемещение)
-    if (active.data.current?.type === 'block' && overData?.type === 'slot' && droppedBlock) {
-      const newDay = overData.day as string
-      const newTime = overData.time as string
-      // Не показывать диалог если бросили на то же место
-      if (newDay === droppedBlock.day && newTime === droppedBlock.start_time) return
-      setMoveBlock({ block: droppedBlock, newDay, newTime })
+      setDropDay(overData.day as string)
+      setDropTime(overData.time as string)
+      setEditEvent(null)
+      setShowEventForm(true)
     }
   }
 
-  const handleConfirmMove = async () => {
-    if (!moveBlock) return
-    setMovingSaving(true)
+  const handleEventClick = (event: Event) => {
+    setEditEvent(event)
+    setShowEventForm(true)
+  }
+
+  const handleDeleteEvent = async (eventId: number) => {
+    if (!confirm('Удалить событие?')) return
+    await api.deleteEvent(eventId)
+    await loadEvents()
+  }
+
+  const handleAddEvent = (day: string, time: string) => {
+    setDropDay(day)
+    setDropTime(time)
+    setEditEvent(null)
+    setShowEventForm(true)
+  }
+
+  // Снять задачу с дня (убрать scheduled_date)
+  const handleUnscheduleTask = async (taskId: number) => {
     try {
-      await api.updateBlock(moveBlock.block.id, {
-        day: moveBlock.newDay,
-        start_time: moveBlock.newTime,
-      })
-      await loadBlocks()
-      setMoveBlock(null)
+      await api.updateTask(taskId, { scheduled_date: null })
+      await loadTasks()
     } catch (e: any) {
-      alert(e.message || 'Ошибка перемещения')
-    } finally {
-      setMovingSaving(false)
+      alert(e.message || 'Ошибка')
     }
   }
 
-  const handleBlockClick = (block: TaskBlock) => { setEditBlock(block); setShowBlockForm(true) }
-  const handleDeleteBlock = async (blockId: number) => { await api.deleteBlock(blockId); await loadBlocks() }
-  const handleAddBlock = (day: string, time: string) => {
-    setDropDay(day); setDropTime(time); setEditBlock(null); setPreselectedTaskIds([]); setShowBlockForm(true)
-  }
-
-  const handleAutoDistribute = async () => {
-    await api.autoDistribute(weekStart); await loadBlocks(); setShowConfirm(null)
-  }
-  const handleCarryOver = async () => {
-    await api.carryOver(weekStart); await loadBlocks(); setShowConfirm(null)
-  }
-  const handleClearBlocks = async () => {
-    await api.clearBlocks(weekStart); await loadBlocks(); setShowConfirm(null)
+  // Сменить статус задачи
+  const handleTaskStatusChange = async (taskId: number, status: string) => {
+    try {
+      await api.updateTask(taskId, { status })
+      await loadTasks()
+    } catch (e: any) {
+      alert(e.message || 'Ошибка')
+    }
   }
 
   const formatWeekRange = () => {
@@ -271,21 +252,6 @@ export default function Calendar() {
     return `${start.toLocaleDateString('ru', opts)} — ${end.toLocaleDateString('ru', opts)}`
   }
 
-  // Название блока для диалога перемещения
-  const getMoveBlockName = () => {
-    if (!moveBlock) return ''
-    const b = moveBlock.block
-    return b.block_name || (b.task_ids?.length > 0 && taskMap[b.task_ids[0]]?.name) || 'Блок'
-  }
-
-  const formatDayShort = (dateStr: string) => {
-    const d = new Date(dateStr + 'T00:00:00')
-    const dow = d.getDay()
-    const dayIdx = dow === 0 ? 6 : dow - 1
-    return `${DAY_SHORT[dayIdx]} ${d.getDate()}`
-  }
-
-  // Форматирование даты для дневного вида
   const formatDayLabel = (dayStr: string) => {
     const d = new Date(dayStr + 'T00:00:00')
     const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', weekday: 'long' }
@@ -323,15 +289,6 @@ export default function Calendar() {
           <button className="btn btn-secondary btn-sm" onClick={() => setShowBacklog(!showBacklog)} title="Панель задач для перетаскивания">
             {showBacklog ? '✕' : '📋'}
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowConfirm('auto')} title="Автоматически расставить задачи по свободным слотам">
-            🔄
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowConfirm('carry')} title="Перенести невыполненные блоки на следующую неделю">
-            ➡️
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowConfirm('clear')} title="Очистить все запланированные блоки">
-            🗑
-          </button>
         </div>
       </div>
 
@@ -340,7 +297,6 @@ export default function Calendar() {
           {showBacklog && <BacklogPanel tasks={tasks} catMap={catMap} />}
 
           {viewMode === 'week' ? (
-            /* Недельный вид */
             <div className="calendar-grid">
               <div className="calendar-day-headers">
                 {weekDays.map((day, i) => {
@@ -361,27 +317,30 @@ export default function Calendar() {
                 {weekDays.map((day, i) => (
                   <DayColumn
                     key={day} day={day} dayOfWeek={i}
-                    blocks={blocksByDay[day] || []}
+                    events={eventsByDay[day] || []}
+                    dayTasks={tasksByDay[day] || []}
                     schedule={schedule.find((s) => s.day_of_week === i)}
-                    taskMap={taskMap} catMap={catMap}
+                    catMap={catMap}
                     dayStartTime={effectiveStart}
                     dayEndTime={effectiveEnd}
-                    dragBlockId={dragBlock?.id ?? null}
-                    onBlockClick={handleBlockClick} onAddBlock={handleAddBlock} onDeleteBlock={handleDeleteBlock}
+                    onEventClick={handleEventClick}
+                    onAddEvent={handleAddEvent}
+                    onDeleteEvent={handleDeleteEvent}
+                    onUnscheduleTask={handleUnscheduleTask}
+                    onTaskStatusChange={handleTaskStatusChange}
                   />
                 ))}
               </div>
             </div>
           ) : (
-            /* Дневной вид */
             <div className="calendar-day-view">
-              {/* Мини-полоска дней для быстрого переключения */}
               <div className="day-view-strip">
                 {weekDays.map((day, i) => {
                   const d = new Date(day + 'T00:00:00')
                   const isToday = day === formatLocalDate(new Date())
                   const isSelected = i === selectedDayIndex
-                  const hasBlocks = (blocksByDay[day] || []).length > 0
+                  const hasEvents = (eventsByDay[day] || []).length > 0
+                  const hasTasks = (tasksByDay[day] || []).length > 0
                   const scheduleDay = schedule.find((s) => s.day_of_week === i)
                   return (
                     <button
@@ -391,26 +350,29 @@ export default function Calendar() {
                     >
                       <span className="strip-day-name">{DAY_SHORT[i]}</span>
                       <span className="strip-day-date">{d.getDate()}</span>
-                      {hasBlocks && <span className="strip-dot">●</span>}
+                      {(hasEvents || hasTasks) && <span className="strip-dot">●</span>}
                       {scheduleDay?.is_day_off && <span className="strip-off">вых</span>}
                     </button>
                   )
                 })}
               </div>
 
-              {/* Одна колонка на весь экран */}
               <div className="day-view-column">
                 <DayColumn
                   key={weekDays[selectedDayIndex]}
                   day={weekDays[selectedDayIndex]}
                   dayOfWeek={selectedDayIndex}
-                  blocks={blocksByDay[weekDays[selectedDayIndex]] || []}
+                  events={eventsByDay[weekDays[selectedDayIndex]] || []}
+                  dayTasks={tasksByDay[weekDays[selectedDayIndex]] || []}
                   schedule={schedule.find((s) => s.day_of_week === selectedDayIndex)}
-                  taskMap={taskMap} catMap={catMap}
+                  catMap={catMap}
                   dayStartTime={effectiveStart}
                   dayEndTime={effectiveEnd}
-                  dragBlockId={dragBlock?.id ?? null}
-                  onBlockClick={handleBlockClick} onAddBlock={handleAddBlock} onDeleteBlock={handleDeleteBlock}
+                  onEventClick={handleEventClick}
+                  onAddEvent={handleAddEvent}
+                  onDeleteEvent={handleDeleteEvent}
+                  onUnscheduleTask={handleUnscheduleTask}
+                  onTaskStatusChange={handleTaskStatusChange}
                 />
               </div>
             </div>
@@ -423,119 +385,18 @@ export default function Calendar() {
               {catMap[dragTask.category_id]?.emoji || '📋'} {dragTask.name}
             </div>
           )}
-          {dragBlock && (() => {
-            const dur = dragBlock.duration_type === 'fixed'
-              ? (dragBlock.duration_min || 30)
-              : dragBlock.duration_type === 'range'
-                ? Math.round(((dragBlock.min_duration_min || 0) + (dragBlock.max_duration_min || 0)) / 2)
-                : (dragBlock.max_duration_min || 60)
-            const slotsCount = Math.max(1, Math.ceil(dur / 30))
-            const blockName = dragBlock.block_name || (dragBlock.task_ids?.length > 0 && taskMap[dragBlock.task_ids[0]]?.name) || 'Блок'
-            const color = (() => {
-              if (dragBlock.task_ids?.length > 0) {
-                const t = taskMap[dragBlock.task_ids[0]]
-                if (t) { const c = catMap[t.category_id]; if (c?.color) return c.color }
-              }
-              return 'var(--accent)'
-            })()
-            return (
-              <div
-                className="cal-block"
-                style={{
-                  borderLeftColor: color,
-                  height: `${slotsCount * 28 - 2}px`,
-                  width: 120,
-                  boxShadow: 'var(--shadow-lg)',
-                  opacity: 0.9,
-                }}
-              >
-                <div className="cal-block-name">{blockName}</div>
-                <div className="cal-block-time">{dragBlock.start_time} · {dur} мин</div>
-              </div>
-            )
-          })()}
-          {dragEpic && (
-            <div className="backlog-drag-preview">
-              {catMap[dragEpic.epic.category_id]?.emoji || '📁'} {dragEpic.epic.name} ({dragEpic.epicTasks.length} задач)
-            </div>
-          )}
         </DragOverlay>
       </DndContext>
 
-      {showBlockForm && (
-        <BlockForm
-          day={dropDay} time={dropTime} editBlock={editBlock}
-          tasks={tasks} taskMap={taskMap} catMap={catMap}
-          preselectedTaskIds={preselectedTaskIds}
-          onClose={() => setShowBlockForm(false)} onSaved={() => { setShowBlockForm(false); loadBlocks() }}
+      {showEventForm && (
+        <EventForm
+          day={dropDay}
+          time={dropTime}
+          editEvent={editEvent}
+          catMap={catMap}
+          onClose={() => setShowEventForm(false)}
+          onSaved={() => { setShowEventForm(false); loadEvents() }}
         />
-      )}
-
-      {/* Диалог подтверждения перемещения блока */}
-      {moveBlock && (
-        <div className="overlay" onClick={() => setMoveBlock(null)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>📦 Переместить блок?</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              «{getMoveBlockName()}» → {formatDayShort(moveBlock.newDay)} в {moveBlock.newTime}
-            </p>
-            <div className="dialog-actions">
-              <button className="btn btn-secondary" onClick={() => setMoveBlock(null)}>Отмена</button>
-              <button className="btn btn-primary" onClick={handleConfirmMove} disabled={movingSaving}>
-                {movingSaving ? '...' : 'Переместить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Диалоги подтверждения */}
-      {showConfirm === 'auto' && (
-        <div className="overlay" onClick={() => setShowConfirm(null)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>🔄 Автораспределить</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              Бот автоматически расставит задачи из бэклога по свободным слотам в календаре,
-              учитывая приоритет и примерное время задач.
-            </p>
-            <div className="dialog-actions">
-              <button className="btn btn-secondary" onClick={() => setShowConfirm(null)}>Отмена</button>
-              <button className="btn btn-primary" onClick={handleAutoDistribute}>Распределить</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showConfirm === 'carry' && (
-        <div className="overlay" onClick={() => setShowConfirm(null)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>➡️ Перенести невыполненное</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              Все незавершённые блоки (пропущенные, проваленные) будут скопированы
-              на следующую неделю в те же временные слоты.
-            </p>
-            <div className="dialog-actions">
-              <button className="btn btn-secondary" onClick={() => setShowConfirm(null)}>Отмена</button>
-              <button className="btn btn-primary" onClick={handleCarryOver}>Перенести</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showConfirm === 'clear' && (
-        <div className="overlay" onClick={() => setShowConfirm(null)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>🗑 Очистить календарь</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              Все запланированные блоки за эту неделю будут удалены из календаря.
-              Задачи останутся в бэклоге.
-            </p>
-            <div className="dialog-actions">
-              <button className="btn btn-secondary" onClick={() => setShowConfirm(null)}>Отмена</button>
-              <button className="btn btn-primary btn-danger" onClick={handleClearBlocks}>Очистить</button>
-            </div>
-          </div>
-        </div>
       )}
 
       <div style={{ height: 80 }} />

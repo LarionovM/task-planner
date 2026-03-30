@@ -53,6 +53,12 @@ async def lifespan(app: FastAPI):
     # Восстанавливаем jobs из БД
     await restore_jobs_on_startup()
 
+    # Рассылка уведомлений о новой версии
+    from backend.bot.version_notify import notify_new_version
+    sent = await notify_new_version(bot)
+    if sent:
+        logger.info(f"Отправлено {sent} уведомлений о новой версии")
+
     # Запускаем бота
     if settings.use_polling:
         # Polling режим (локальная разработка)

@@ -96,6 +96,15 @@ async def init_db() -> None:
             # TaskBlock: помодоро-сессия (task_id вместо task_ids)
             "ALTER TABLE task_blocks ADD COLUMN task_id INTEGER REFERENCES tasks(id)",
             "ALTER TABLE task_blocks ADD COLUMN pomodoro_number INTEGER DEFAULT 1",
+
+            # Таблица уведомлений о версиях (v1.2.0)
+            """CREATE TABLE IF NOT EXISTS version_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(telegram_id),
+                version VARCHAR(20) NOT NULL,
+                sent_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_version_notifications_user_id ON version_notifications(user_id)",
         ]
         for sql in migrations:
             try:

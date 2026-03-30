@@ -40,6 +40,7 @@ class AdminStates(StatesGroup):
     waiting_delete_user_id = State()
     waiting_toggle_user_id = State()
     waiting_stats_user_id = State()
+    waiting_broadcast_text = State()
 
 
 def _user_display(u: AllowedUser) -> str:
@@ -61,6 +62,7 @@ def admin_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔇 Вкл/выкл пользователя", callback_data="admin:toggle")],
         [InlineKeyboardButton(text="📊 Статистика пользователя", callback_data="admin:stats")],
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin:list")],
+        [InlineKeyboardButton(text="📢 Рассылка всем", callback_data="admin:broadcast")],
         [InlineKeyboardButton(text="◀️ Назад в настройки", callback_data="set:back")],
     ])
 
@@ -524,3 +526,46 @@ async def admin_reject_request(callback: CallbackQuery, allowed_user: AllowedUse
         logger.error(f"Не удалось уведомить пользователя {target_id}: {e}")
 
     await callback.answer("Запрос отклонён")
+
+
+# === Рассылка всем пользователям ===
+
+@router.callback_query(F.data == "admin:broadcast")
+async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext, allowed_user: AllowedUser):
+    """Начало рассылки — запрашиваем текст."""
+    if not allowed_user.is_admin:
+        await callback.answer("🚫 Только для админа", show_alert=True)
+        return
+
+    await callback.message.answer(
+        "📢 *Рассылка всем пользователям*\n\n"
+        "Введите текст сообщения (поддерживается Markdown).\n"
+        "Отмена — любая команда `/...`",
+        reply_markup=ForceReply(selective=True),
+        parse_mode="Markdown",
+    )
+    await state.set_state(AdminStates.waiting_broadcast_text)
+    await callback.answer()
+
+
+@router.message(AdminStates.waiting_broadcast_text, ~F.text.startswith("/"))
+async def admin_broadcast_process(message: Message, state: FSMContext, allowed_user: AllowedUser):
+    """Отправка рассылки."""
+    if not allowed_user.is_admin:
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("❌ Пустое сообщение. Попробуйте ещё раз.")
+        return
+
+    from backend.bot.version_notify import send_custom_broadcast
+
+    sent = await send_custom_broadcast(message.bot, text, allowed_user.telegram_id)
+
+    await message.answer(
+        f"✅ Рассылка отправлена: *{sent}* пользователей.",
+        parse_mode="Markdown",
+        reply_markup=admin_menu_keyboard(),
+    )
+    await state.clear()

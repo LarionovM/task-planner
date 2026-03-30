@@ -1,28 +1,37 @@
-// Боковая панель бэклога — перетаскивание задач и эпиков в календарь
+// Боковая панель бэклога — перетаскивание задач на дни в календаре
+// v1.2.0: задачи назначаются на день (scheduled_date), без конкретного времени
 
 import { useMemo, useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import type { Task, Category } from '../../types'
 
-type SortMode = 'priority' | 'deadline' | 'category' | 'name' | 'time'
+type SortMode = 'priority' | 'deadline' | 'category' | 'name' | 'status'
 
 const SORT_OPTIONS: { value: SortMode; label: string; icon: string }[] = [
   { value: 'priority', label: 'Приоритет', icon: '🔴' },
+  { value: 'status', label: 'Статус', icon: '📊' },
   { value: 'deadline', label: 'Дедлайн', icon: '📅' },
   { value: 'category', label: 'Категория', icon: '📁' },
   { value: 'name', label: 'Имя', icon: '🔤' },
-  { value: 'time', label: 'Время', icon: '⏱' },
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+const STATUS_ORDER: Record<string, number> = { in_progress: 0, grooming: 1, blocked: 2, done: 3 }
+const STATUS_ICONS: Record<string, string> = {
+  grooming: '📝',
+  in_progress: '🔄',
+  blocked: '🚫',
+  done: '✅',
+}
 
 function sortTasks(tasks: Task[], mode: SortMode, catMap: Record<number, Category>): Task[] {
   return [...tasks].sort((a, b) => {
     switch (mode) {
       case 'priority':
         return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)
+      case 'status':
+        return (STATUS_ORDER[a.status] ?? 1) - (STATUS_ORDER[b.status] ?? 1)
       case 'deadline': {
-        // Задачи с дедлайном первые, затем по дате
         if (!a.deadline && !b.deadline) return 0
         if (!a.deadline) return 1
         if (!b.deadline) return -1
@@ -35,8 +44,6 @@ function sortTasks(tasks: Task[], mode: SortMode, catMap: Record<number, Categor
       }
       case 'name':
         return a.name.localeCompare(b.name)
-      case 'time':
-        return (a.estimated_time_min || 0) - (b.estimated_time_min || 0)
       default:
         return 0
     }
@@ -61,7 +68,6 @@ function DraggableTask({
   })
 
   const cat = catMap[task.category_id]
-
   const priorityDot = task.priority === 'high' ? '🔴' : task.priority === 'low' ? '🟢' : ''
 
   return (
@@ -72,13 +78,16 @@ function DraggableTask({
       {...listeners}
       {...attributes}
     >
+      <span>{STATUS_ICONS[task.status] || '📝'}</span>
       <span>{cat?.emoji || '📋'}</span>
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {task.name}
       </span>
       {priorityDot && <span style={{ fontSize: 8 }}>{priorityDot}</span>}
-      {task.allow_multi_per_block && (
-        <span style={{ fontSize: 9, color: 'var(--accent)' }}>🔄</span>
+      {task.scheduled_date && (
+        <span style={{ fontSize: 9, color: 'var(--accent)' }} title={`Назначено: ${task.scheduled_date}`}>
+          📅
+        </span>
       )}
       {task.estimated_time_min && (
         <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
@@ -89,123 +98,61 @@ function DraggableTask({
   )
 }
 
-function DraggableEpic({
-  epic,
-  epicTasks,
-}: {
-  epic: Task
-  epicTasks: Task[]
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `epic-${epic.id}`,
-    data: { type: 'epic', epic, epicTasks },
-  })
-
-  const totalMin = epicTasks.reduce((s, t) => s + (t.estimated_time_min || 5), 0)
-
-  return (
-    <div
-      ref={setNodeRef}
-      className="backlog-panel-item backlog-panel-epic"
-      style={{ opacity: isDragging ? 0.4 : 1 }}
-      {...listeners}
-      {...attributes}
-    >
-      <span>{epic.epic_emoji || '📦'}</span>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
-        {epic.name}
-      </span>
-      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-        {epicTasks.length}шт ~{totalMin}м
-      </span>
-    </div>
-  )
-}
-
 export default function BacklogPanel({ tasks, catMap }: BacklogPanelProps) {
   const [sortMode, setSortMode] = useState<SortMode>('priority')
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['recurring', 'onetime']))
+  const [showDone, setShowDone] = useState(false)
+  const [showScheduled, setShowScheduled] = useState(false)
 
-  const toggleSection = (key: string) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  // Разделяем на регулярные и разовые, внутри каждой — эпики + standalone
-  const buildGroup = (taskList: Task[]) => {
-    const allEpics = tasks.filter((t) => t.is_epic)
-    const epicIds = new Set(taskList.map((t) => t.epic_id).filter(Boolean) as number[])
-    const sectionEpics = allEpics.filter((e) => epicIds.has(e.id))
-    const byEpic: Record<number, Task[]> = {}
-    taskList.forEach((t) => {
-      if (t.epic_id) {
-        if (!byEpic[t.epic_id]) byEpic[t.epic_id] = []
-        byEpic[t.epic_id].push(t)
-      }
-    })
-    for (const key of Object.keys(byEpic)) {
-      byEpic[Number(key)] = sortTasks(byEpic[Number(key)], sortMode, catMap)
+  // Фильтрация: по умолчанию только незавершённые и ненаназначенные
+  const filteredTasks = useMemo(() => {
+    let result = tasks.filter((t) => !t.is_epic)
+    if (!showDone) {
+      result = result.filter((t) => t.status !== 'done')
     }
-    const standalone = sortTasks(taskList.filter((t) => !t.epic_id), sortMode, catMap)
-    return { sectionEpics, byEpic, standalone }
-  }
+    if (!showScheduled) {
+      result = result.filter((t) => !t.scheduled_date)
+    }
+    return result
+  }, [tasks, showDone, showScheduled])
 
-  const recurringTasks = useMemo(() => tasks.filter((t) => !t.is_epic && t.is_recurring), [tasks])
-  const onetimeTasks = useMemo(() => tasks.filter((t) => !t.is_epic && !t.is_recurring), [tasks])
-  const recurringGroups = useMemo(() => buildGroup(recurringTasks), [recurringTasks, sortMode, catMap])
-  const onetimeGroups = useMemo(() => buildGroup(onetimeTasks), [onetimeTasks, sortMode, catMap])
+  const sortedTasks = useMemo(
+    () => sortTasks(filteredTasks, sortMode, catMap),
+    [filteredTasks, sortMode, catMap]
+  )
 
-  const renderGroup = (key: string, title: string, count: number, groups: ReturnType<typeof buildGroup>) => {
-    if (count === 0 && groups.sectionEpics.length === 0) return null
-    const isExpanded = expandedSections.has(key)
-    return (
-      <div style={{ marginBottom: 6 }}>
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px',
-            fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)',
-            cursor: 'pointer', userSelect: 'none', borderBottom: '1px solid var(--border)',
-          }}
-          onClick={() => toggleSection(key)}
-        >
-          <span style={{ width: 12 }}>{isExpanded ? '▾' : '▸'}</span>
-          <span style={{ flex: 1 }}>{title}</span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--bg-input)', padding: '0 5px', borderRadius: 8 }}>
-            {count}
-          </span>
-        </div>
-        {isExpanded && (
-          <div>
-            {groups.sectionEpics.map((epic) => {
-              const epicTasks = groups.byEpic[epic.id] || []
-              if (epicTasks.length === 0) return null
-              return (
-                <div key={epic.id}>
-                  <DraggableEpic epic={epic} epicTasks={epicTasks} />
-                  {epicTasks.map((task) => (
-                    <div key={task.id} style={{ paddingLeft: 12 }}>
-                      <DraggableTask task={task} catMap={catMap} />
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-            {groups.standalone.map((task) => (
-              <DraggableTask key={task.id} task={task} catMap={catMap} />
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
+  const unscheduledCount = tasks.filter((t) => !t.is_epic && !t.scheduled_date && t.status !== 'done').length
+  const totalActive = tasks.filter((t) => !t.is_epic && t.status !== 'done').length
 
   return (
     <div className="backlog-panel">
-      <div className="backlog-panel-title">Задачи</div>
+      <div className="backlog-panel-title">
+        📋 Задачи ({unscheduledCount}/{totalActive})
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '0 8px 4px', lineHeight: 1.3 }}>
+        Перетащите задачу на день чтобы назначить
+      </div>
+
+      {/* Фильтры */}
+      <div style={{ display: 'flex', gap: 4, padding: '0 8px 4px', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showScheduled}
+            onChange={() => setShowScheduled(!showScheduled)}
+            style={{ accentColor: 'var(--accent)' }}
+          />
+          Назначенные
+        </label>
+        <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showDone}
+            onChange={() => setShowDone(!showDone)}
+            style={{ accentColor: 'var(--accent)' }}
+          />
+          Готовые
+        </label>
+      </div>
 
       {/* Сортировка */}
       <div className="backlog-sort-bar">
@@ -221,12 +168,18 @@ export default function BacklogPanel({ tasks, catMap }: BacklogPanelProps) {
         ))}
       </div>
 
-      {renderGroup('recurring', '🔁 Регулярные', recurringTasks.length, recurringGroups)}
-      {renderGroup('onetime', '📌 Разовые', onetimeTasks.length, onetimeGroups)}
+      {/* Список задач */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {sortedTasks.map((task) => (
+          <DraggableTask key={task.id} task={task} catMap={catMap} />
+        ))}
+      </div>
 
-      {tasks.length === 0 && (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8 }}>
-          Нет задач. Создайте во вкладке «Задачи».
+      {sortedTasks.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>
+          {filteredTasks.length === 0 && unscheduledCount === 0
+            ? 'Все задачи назначены или завершены!'
+            : 'Нет задач. Создайте во вкладке «Задачи».'}
         </div>
       )}
     </div>
