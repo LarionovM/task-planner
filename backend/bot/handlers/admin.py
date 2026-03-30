@@ -61,7 +61,19 @@ def admin_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔇 Вкл/выкл пользователя", callback_data="admin:toggle")],
         [InlineKeyboardButton(text="📊 Статистика пользователя", callback_data="admin:stats")],
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin:list")],
+        [InlineKeyboardButton(text="◀️ Назад в настройки", callback_data="set:back")],
     ])
+
+
+# Алиасы для импорта из settings.py
+def admin_keyboard() -> InlineKeyboardMarkup:
+    """Алиас для admin_menu_keyboard (используется в settings.py)."""
+    return admin_menu_keyboard()
+
+
+def admin_text() -> str:
+    """Текст для админ-панели (используется в settings.py)."""
+    return "🔑 *Панель администратора*\n\nВыберите действие:"
 
 
 async def _user_select_keyboard(admin_id: int, action: str) -> InlineKeyboardMarkup:

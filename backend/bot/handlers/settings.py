@@ -1,7 +1,7 @@
-"""Обработчики /settings и /stats."""
+"""Обработчик /settings — настройки, пауза, стоп, админка (v1.2.0)."""
 
 import logging
-from datetime import date, timedelta
+from datetime import datetime, timedelta, date
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -10,10 +10,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ForceReply,
 )
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 
 from backend.db.database import async_session
 from backend.db.crud.users import (
@@ -23,7 +20,7 @@ from backend.db.crud.users import (
     update_spam_config,
 )
 from backend.db.crud.blocks import list_blocks_for_week, get_weekly_goals
-from backend.db.crud.tasks import list_categories, get_task, list_tasks
+from backend.db.crud.tasks import list_categories, get_task
 from backend.db.models import AllowedUser
 
 logger = logging.getLogger(__name__)
@@ -31,208 +28,235 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-class SettingsStates(StatesGroup):
-    waiting_timezone = State()
-    waiting_quiet_start = State()
-    waiting_quiet_end = State()
-    waiting_day_end_time = State()
+# === Главное меню /settings ===
 
 
-# === /settings ===
+def _settings_main_keyboard(is_admin: bool = False, is_stopped: bool = False) -> InlineKeyboardMarkup:
+    """Основное меню настроек."""
+    rows = []
 
-def settings_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🕐 Часовой пояс", callback_data="settings:tz")],
-        [InlineKeyboardButton(text="🔇 Тихое время", callback_data="settings:quiet")],
-        [InlineKeyboardButton(text="📊 Время итога дня", callback_data="settings:dayend")],
-        [InlineKeyboardButton(text="📢 Настройки спама", callback_data="settings:spam")],
-    ])
+    # Пауза / Стоп / Возобновить
+    if is_stopped:
+        rows.append([InlineKeyboardButton(text="▶️ Возобновить напоминания", callback_data="set:resume")])
+    else:
+        rows.append([
+            InlineKeyboardButton(text="⏸ Пауза", callback_data="set:pause"),
+            InlineKeyboardButton(text="⏹ Стоп", callback_data="set:stop"),
+        ])
+
+    # Спам
+    rows.append([InlineKeyboardButton(text="📢 Спам-настройки", callback_data="set:spam")])
+
+    # Админ-панель
+    if is_admin:
+        rows.append([InlineKeyboardButton(text="🔑 Админ-панель", callback_data="set:admin")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message, allowed_user: AllowedUser):
-    """Настройки пользователя."""
+    """Команда /settings — главное меню настроек."""
     async with async_session() as session:
         user = await get_or_create_user(session, allowed_user.telegram_id)
 
+    is_stopped = getattr(user, 'reminders_stopped', False) or False
+    paused_until = getattr(user, 'reminders_paused_until', None)
+
+    status_text = "✅ Активны"
+    if is_stopped:
+        status_text = "⏹ Остановлены"
+    elif paused_until and paused_until > datetime.now():
+        status_text = f"⏸ Пауза до {paused_until.strftime('%H:%M')}"
+
     text = (
         "⚙️ *Настройки*\n\n"
+        f"🍅 Помодоро: {user.pomodoro_work_min or 25}+{user.pomodoro_short_break_min or 5} мин\n"
         f"🕐 Часовой пояс: `{user.timezone}`\n"
-        f"🔇 Тихое время: `{user.quiet_start.strftime('%H:%M')}–{user.quiet_end.strftime('%H:%M')}`\n"
-        f"📊 Итог дня в: `{user.day_end_time.strftime('%H:%M')}`\n\n"
-        "Что изменить?"
+        f"📢 Напоминания: {status_text}\n\n"
+        "Остальные настройки — в Web App (кнопка в /start)"
     )
-    await message.answer(text, reply_markup=settings_menu_keyboard(), parse_mode="Markdown")
 
-
-# --- Часовой пояс ---
-
-@router.callback_query(F.data == "settings:tz")
-async def settings_tz(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "Введите часовой пояс (например: `Europe/Moscow`, `Asia/Tokyo`, `US/Eastern`):",
-        reply_markup=ForceReply(selective=True),
+    await message.answer(
+        text,
+        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped),
         parse_mode="Markdown",
     )
-    await state.set_state(SettingsStates.waiting_timezone)
+
+
+# === Пауза ===
+
+
+def _pause_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="15 мин", callback_data="set:pause:15"),
+            InlineKeyboardButton(text="30 мин", callback_data="set:pause:30"),
+        ],
+        [
+            InlineKeyboardButton(text="1 час", callback_data="set:pause:60"),
+            InlineKeyboardButton(text="2 часа", callback_data="set:pause:120"),
+        ],
+        [
+            InlineKeyboardButton(text="До конца дня", callback_data="set:pause:eod"),
+        ],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="set:back")],
+    ])
+
+
+@router.callback_query(F.data == "set:pause")
+async def cb_pause_menu(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Показать варианты паузы."""
+    await callback.message.edit_text(
+        "⏸ *Пауза напоминаний*\nНа сколько поставить на паузу?",
+        reply_markup=_pause_keyboard(),
+        parse_mode="Markdown",
+    )
     await callback.answer()
 
 
-@router.message(SettingsStates.waiting_timezone, ~F.text.startswith("/"))
-async def settings_tz_process(message: Message, state: FSMContext, allowed_user: AllowedUser):
-    tz = message.text.strip()
+@router.callback_query(F.data.startswith("set:pause:"))
+async def cb_pause_select(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Выбран вариант паузы."""
+    option = callback.data.split(":")[2]
+    now = datetime.now()
 
-    # Простая валидация
-    import pytz
-    try:
-        pytz.timezone(tz)
-    except Exception:
-        # Если pytz не установлен — примем как есть
-        try:
-            from zoneinfo import ZoneInfo
-            ZoneInfo(tz)
-        except Exception:
-            await message.answer(f"❌ Неизвестный часовой пояс: `{tz}`", parse_mode="Markdown")
-            await state.clear()
-            return
+    if option == "eod":
+        # До конца дня
+        async with async_session() as session:
+            user = await get_or_create_user(session, allowed_user.telegram_id)
+            day_end = user.day_end_time
+            if day_end:
+                until = now.replace(hour=day_end.hour, minute=day_end.minute, second=0)
+                if until <= now:
+                    until += timedelta(days=1)
+            else:
+                until = now.replace(hour=23, minute=50, second=0)
+    else:
+        minutes = int(option)
+        until = now + timedelta(minutes=minutes)
 
     async with async_session() as session:
-        await update_user_settings(session, allowed_user.telegram_id, timezone=tz)
+        await update_user_settings(
+            session, allowed_user.telegram_id,
+            reminders_paused_until=until,
+            reminders_stopped=False,
+        )
         await session.commit()
 
-    await message.answer(
-        f"✅ Часовой пояс изменён на `{tz}`",
-        parse_mode="Markdown",
-        reply_markup=settings_menu_keyboard(),
-    )
-    await state.clear()
-
-
-# --- Тихое время ---
-
-@router.callback_query(F.data == "settings:quiet")
-async def settings_quiet(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "Введите начало тихого времени (HH:MM), например `23:00`:",
-        reply_markup=ForceReply(selective=True),
+    await callback.message.edit_text(
+        f"⏸ Напоминания на паузе до *{until.strftime('%H:%M')}*\n"
+        f"Зайди в /settings чтобы возобновить раньше.",
         parse_mode="Markdown",
     )
-    await state.set_state(SettingsStates.waiting_quiet_start)
     await callback.answer()
 
 
-@router.message(SettingsStates.waiting_quiet_start, ~F.text.startswith("/"))
-async def settings_quiet_start_process(message: Message, state: FSMContext, allowed_user: AllowedUser):
-    from datetime import time
-    try:
-        parts = message.text.strip().split(":")
-        t = time(int(parts[0]), int(parts[1]))
-    except Exception:
-        await message.answer("❌ Формат: HH:MM (например 23:00)")
-        return
+# === Стоп ===
 
+
+@router.callback_query(F.data == "set:stop")
+async def cb_stop(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Остановить напоминания."""
     async with async_session() as session:
-        await update_user_settings(session, allowed_user.telegram_id, quiet_start=t)
+        await update_user_settings(
+            session, allowed_user.telegram_id,
+            reminders_stopped=True,
+            reminders_paused_until=None,
+        )
         await session.commit()
 
-    await message.answer(
-        f"✅ Начало тихого времени: `{t.strftime('%H:%M')}`\n"
-        "Теперь введите конец тихого времени (HH:MM), например `08:00`:",
-        reply_markup=ForceReply(selective=True),
+    await callback.message.edit_text(
+        "⏹ Напоминания *остановлены*.\n"
+        "Зайди в /settings → ▶️ Возобновить, когда будешь готов.",
         parse_mode="Markdown",
     )
-    await state.set_state(SettingsStates.waiting_quiet_end)
-
-
-@router.message(SettingsStates.waiting_quiet_end, ~F.text.startswith("/"))
-async def settings_quiet_end_process(message: Message, state: FSMContext, allowed_user: AllowedUser):
-    from datetime import time
-    try:
-        parts = message.text.strip().split(":")
-        t = time(int(parts[0]), int(parts[1]))
-    except Exception:
-        await message.answer("❌ Формат: HH:MM (например 08:00)")
-        return
-
-    async with async_session() as session:
-        await update_user_settings(session, allowed_user.telegram_id, quiet_end=t)
-        await session.commit()
-
-    await message.answer(
-        f"✅ Тихое время: до `{t.strftime('%H:%M')}`",
-        parse_mode="Markdown",
-        reply_markup=settings_menu_keyboard(),
-    )
-    await state.clear()
-
-
-# --- Время итога дня ---
-
-@router.callback_query(F.data == "settings:dayend")
-async def settings_dayend(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "Введите время итога дня (HH:MM), например `23:50`:",
-        reply_markup=ForceReply(selective=True),
-        parse_mode="Markdown",
-    )
-    await state.set_state(SettingsStates.waiting_day_end_time)
     await callback.answer()
 
 
-@router.message(SettingsStates.waiting_day_end_time, ~F.text.startswith("/"))
-async def settings_dayend_process(message: Message, state: FSMContext, allowed_user: AllowedUser):
-    from datetime import time
-    try:
-        parts = message.text.strip().split(":")
-        t = time(int(parts[0]), int(parts[1]))
-    except Exception:
-        await message.answer("❌ Формат: HH:MM (например 23:50)")
-        return
+# === Возобновить ===
 
+
+@router.callback_query(F.data == "set:resume")
+async def cb_resume(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Возобновить напоминания."""
     async with async_session() as session:
-        await update_user_settings(session, allowed_user.telegram_id, day_end_time=t)
+        await update_user_settings(
+            session, allowed_user.telegram_id,
+            reminders_stopped=False,
+            reminders_paused_until=None,
+        )
         await session.commit()
 
-    await message.answer(
-        f"✅ Итог дня будет в `{t.strftime('%H:%M')}`",
-        parse_mode="Markdown",
-        reply_markup=settings_menu_keyboard(),
+    await callback.message.edit_text("✅ Напоминания *включены*!", parse_mode="Markdown")
+    await callback.answer()
+
+
+# === Назад к главному меню ===
+
+
+@router.callback_query(F.data == "set:back")
+async def cb_back(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Вернуться к главному меню настроек."""
+    async with async_session() as session:
+        user = await get_or_create_user(session, allowed_user.telegram_id)
+
+    is_stopped = getattr(user, 'reminders_stopped', False) or False
+    paused_until = getattr(user, 'reminders_paused_until', None)
+
+    status_text = "✅ Активны"
+    if is_stopped:
+        status_text = "⏹ Остановлены"
+    elif paused_until and paused_until > datetime.now():
+        status_text = f"⏸ Пауза до {paused_until.strftime('%H:%M')}"
+
+    text = (
+        "⚙️ *Настройки*\n\n"
+        f"🍅 Помодоро: {user.pomodoro_work_min or 25}+{user.pomodoro_short_break_min or 5} мин\n"
+        f"🕐 Часовой пояс: `{user.timezone}`\n"
+        f"📢 Напоминания: {status_text}\n\n"
+        "Остальные настройки — в Web App (кнопка в /start)"
     )
-    await state.clear()
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
 
 
-# --- Настройки спама ---
+# === Спам-настройки ===
 
-@router.callback_query(F.data == "settings:spam")
-async def settings_spam(callback: CallbackQuery, allowed_user: AllowedUser):
+
+@router.callback_query(F.data == "set:spam")
+async def cb_spam(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Настройки спама."""
     async with async_session() as session:
         config = await get_spam_config(session, allowed_user.telegram_id)
 
     status = "✅ Включён" if config.enabled else "❌ Выключен"
-    cats = config.spam_category_ids or []
-    cats_text = "все категории" if not cats else f"{len(cats)} категорий"
+    toggle_text = "❌ Выключить" if config.enabled else "✅ Включить"
 
     text = (
-        f"📢 *Настройки спама*\n\n"
+        f"📢 *Спам-настройки*\n\n"
         f"Статус: {status}\n"
-        f"Начальный интервал: `{config.initial_interval_sec}` сек\n"
-        f"Множитель: `{config.multiplier}`x\n"
-        f"Макс. интервал: `{config.max_interval_sec}` сек\n"
-        f"Применяется к: {cats_text}"
+        f"Интервал: {config.initial_interval_sec} сек → x{config.multiplier} → макс {config.max_interval_sec} сек\n\n"
+        "_Детальная настройка — в Web App_"
     )
 
-    toggle_text = "❌ Выключить спам" if config.enabled else "✅ Включить спам"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=toggle_text, callback_data="settings:spam_toggle")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="settings:back")],
+        [InlineKeyboardButton(text=toggle_text, callback_data="set:spam_toggle")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="set:back")],
     ])
 
-    await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
     await callback.answer()
 
 
-@router.callback_query(F.data == "settings:spam_toggle")
-async def settings_spam_toggle(callback: CallbackQuery, allowed_user: AllowedUser):
+@router.callback_query(F.data == "set:spam_toggle")
+async def cb_spam_toggle(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Переключить спам."""
     async with async_session() as session:
         config = await get_spam_config(session, allowed_user.telegram_id)
         new_enabled = not config.enabled
@@ -240,33 +264,38 @@ async def settings_spam_toggle(callback: CallbackQuery, allowed_user: AllowedUse
         await session.commit()
 
     status = "✅ включён" if new_enabled else "❌ выключен"
-    await callback.message.answer(f"Спам теперь {status}")
+    await callback.message.edit_text(f"Спам теперь {status}")
     await callback.answer()
 
 
-@router.callback_query(F.data == "settings:back")
-async def settings_back(callback: CallbackQuery, allowed_user: AllowedUser):
-    async with async_session() as session:
-        user = await get_or_create_user(session, allowed_user.telegram_id)
+# === Админ-панель (через /settings) ===
 
-    text = (
-        "⚙️ *Настройки*\n\n"
-        f"🕐 Часовой пояс: `{user.timezone}`\n"
-        f"🔇 Тихое время: `{user.quiet_start.strftime('%H:%M')}–{user.quiet_end.strftime('%H:%M')}`\n"
-        f"📊 Итог дня в: `{user.day_end_time.strftime('%H:%M')}`\n\n"
-        "Что изменить?"
+
+@router.callback_query(F.data == "set:admin")
+async def cb_admin_panel(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Открыть админ-панель (для is_admin=true)."""
+    if not allowed_user.is_admin:
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+
+    # Импортируем админ-функции
+    from backend.bot.handlers.admin import admin_keyboard, admin_text
+    await callback.message.edit_text(
+        admin_text(),
+        reply_markup=admin_keyboard(),
+        parse_mode="Markdown",
     )
-    await callback.message.answer(text, reply_markup=settings_menu_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
 # === /stats ===
 
+
 @router.message(Command("stats"))
 async def cmd_stats(message: Message, allowed_user: AllowedUser):
     """Статистика за текущую неделю."""
     today = date.today()
-    week_start = today - timedelta(days=today.weekday())  # Понедельник
+    week_start = today - timedelta(days=today.weekday())
 
     async with async_session() as session:
         blocks = await list_blocks_for_week(session, allowed_user.telegram_id, week_start)
@@ -276,52 +305,52 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
     if not blocks:
         await message.answer(
             "📊 *Статистика за неделю*\n\n"
-            "Пока нет запланированных блоков.\n"
-            "Создай задачи и распредели их в календаре!",
+            "Пока нет помодоро-сессий.\n"
+            "Создай задачи и запусти планировщик!",
             parse_mode="Markdown",
         )
         return
 
-    # Считаем по статусам
+    # Считаем помодоро по статусам
     done = sum(1 for b in blocks if b.status == "done")
     partial = sum(1 for b in blocks if b.status == "partial")
     failed = sum(1 for b in blocks if b.status == "failed")
     skipped = sum(1 for b in blocks if b.status == "skipped")
     planned = sum(1 for b in blocks if b.status in ("planned", "active"))
+    total = len(blocks)
 
-    # Считаем время по категориям
+    # Время по категориям
     cat_map = {c.id: c for c in categories}
     goals_map = {g.category_id: g.target_hours for g in goals}
     cat_time: dict[int, int] = {}
 
     async with async_session() as session:
         for block in blocks:
-            cat_id = None
-            for tid in (block.task_ids or []):
-                task = await get_task(session, tid, allowed_user.telegram_id)
-                if task:
-                    cat_id = task.category_id
-                    break
-            if cat_id is None:
+            task_id = getattr(block, 'task_id', None)
+            if not task_id:
+                # Старые блоки с task_ids
+                task_ids = getattr(block, 'task_ids', None)
+                if task_ids:
+                    task_id = task_ids[0] if task_ids else None
+
+            if not task_id:
                 continue
 
-            if block.actual_duration_min is not None:
-                mins = block.actual_duration_min
-            elif block.duration_type == "fixed":
-                mins = block.duration_min or 0
-            else:
-                mins = block.max_duration_min or 60
+            task = await get_task(session, task_id, allowed_user.telegram_id)
+            if not task:
+                continue
 
-            cat_time[cat_id] = cat_time.get(cat_id, 0) + mins
+            mins = block.actual_duration_min or block.duration_min or 25
+            cat_time[task.category_id] = cat_time.get(task.category_id, 0) + mins
 
-    # Формируем текст
     lines = [
         f"📊 *Статистика за неделю* ({week_start.strftime('%d.%m')}–{(week_start + timedelta(days=6)).strftime('%d.%m')})\n",
-        f"📋 Запланировано: {planned}",
+        f"🍅 Всего помодоро: {total}",
         f"✅ Выполнено: {done}",
         f"⚡ Частично: {partial}",
         f"❌ Провалено: {failed}",
         f"⏭ Пропущено: {skipped}",
+        f"📋 Осталось: {planned}",
         "",
         "📁 *По категориям:*",
     ]

@@ -161,6 +161,10 @@ class Task(Base):
     tags = Column(JSON, default=list)  # ["tag1", "tag2"]
     depends_on = Column(JSON, default=list)  # [task_id, ...]
 
+    # Описание и ссылка (опционально)
+    description = Column(Text, nullable=True)
+    link = Column(String(1000), nullable=True)
+
     # Спам
     spam_enabled = Column(Boolean, default=True, nullable=False)
 

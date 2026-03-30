@@ -102,6 +102,8 @@ class TaskCreate(BaseModel):
     estimated_time_min: int | None = None
     priority: str = "medium"
     status: str = "grooming"  # grooming / in_progress / blocked / done
+    description: str | None = None
+    link: str | None = None
     is_recurring: bool = False
     recur_days: list[int] = Field(default_factory=list)
     scheduled_date: date | None = None
@@ -128,6 +130,8 @@ class TaskUpdate(BaseModel):
     estimated_time_min: int | None = None
     priority: str | None = None
     status: str | None = None
+    description: str | None = None
+    link: str | None = None
     is_recurring: bool | None = None
     recur_days: list[int] | None = None
     scheduled_date: date | None = None
@@ -156,6 +160,8 @@ class TaskResponse(BaseModel):
     estimated_time_min: int | None
     priority: str
     status: str
+    description: str | None = None
+    link: str | None = None
     is_recurring: bool
     recur_days: list[int]
     scheduled_date: date | None = None
@@ -250,6 +256,13 @@ class BlockResponse(BaseModel):
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class BlockWarning(BaseModel):
+    """Предупреждение при создании/обновлении блока."""
+    type: str  # overlap, dependency, etc.
+    message: str
+    details: dict = Field(default_factory=dict)
 
 
 class BlockCreateResponse(BaseModel):

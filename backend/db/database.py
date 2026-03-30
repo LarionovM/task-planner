@@ -89,6 +89,10 @@ async def init_db() -> None:
             "ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'grooming'",
             "ALTER TABLE tasks ADD COLUMN scheduled_date DATE",
 
+            # Task: описание и ссылка (v1.2.0)
+            "ALTER TABLE tasks ADD COLUMN description TEXT",
+            "ALTER TABLE tasks ADD COLUMN link TEXT",
+
             # TaskBlock: помодоро-сессия (task_id вместо task_ids)
             "ALTER TABLE task_blocks ADD COLUMN task_id INTEGER REFERENCES tasks(id)",
             "ALTER TABLE task_blocks ADD COLUMN pomodoro_number INTEGER DEFAULT 1",

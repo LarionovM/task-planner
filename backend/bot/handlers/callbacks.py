@@ -1,4 +1,4 @@
-"""Обработчики inline-кнопок: завершить блок, опросник, причины."""
+"""Обработчики inline-кнопок: завершить помодоро, опросник, причины (v1.2.0)."""
 
 import logging
 from datetime import datetime
@@ -8,7 +8,6 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ForceReply,
     Message,
 )
 from aiogram.fsm.context import FSMContext
@@ -17,11 +16,6 @@ from aiogram.fsm.state import State, StatesGroup
 from backend.db.database import async_session
 from backend.db.crud.blocks import get_block, create_log
 from backend.db.models import AllowedUser
-from backend.bot.reminders import (
-    stop_spam_and_cleanup,
-    send_block_end_questionnaire,
-)
-from backend.bot.scheduler import cancel_block_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +27,12 @@ class ReasonStates(StatesGroup):
     waiting_reason = State()
 
 
-# === Завершить блок ===
+# === Завершить помодоро/блок ===
 
 
 @router.callback_query(F.data.startswith("block_finish:"))
 async def cb_block_finish(callback: CallbackQuery, allowed_user: AllowedUser):
-    """Кнопка «✅ Завершить» — для open и range блоков (в рамках диапазона)."""
+    """Кнопка «✅ Завершить» — завершение помодоро-блока."""
     block_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
@@ -60,54 +54,68 @@ async def cb_block_finish(callback: CallbackQuery, allowed_user: AllowedUser):
                          payload={"actual_duration_min": block.actual_duration_min})
         await session.commit()
 
-    # Отменяем оставшиеся jobs
-    cancel_block_jobs(block_id)
-
-    # Останавливаем спам если был
-    await stop_spam_and_cleanup(allowed_user.telegram_id)
-
     # Показываем опросник
-    await send_block_end_questionnaire(block_id)
-    await callback.answer("Блок завершён!")
+    await _send_questionnaire(callback, block_id)
+    await callback.answer("Помодоро завершён!")
 
 
-@router.callback_query(F.data.startswith("block_finish_early:"))
-async def cb_block_finish_early(callback: CallbackQuery, allowed_user: AllowedUser):
-    """Кнопка «⏹ Завершить досрочно» — для fixed и range блоков."""
+@router.callback_query(F.data.startswith("block_skip:"))
+async def cb_block_skip(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Кнопка «⏭ Пропустить» — пропуск помодоро."""
     block_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
         block = await get_block(session, block_id, allowed_user.telegram_id)
-        if not block or block.status != "active":
-            await callback.answer("Блок уже не активен", show_alert=True)
+        if not block:
+            await callback.answer("Блок не найден", show_alert=True)
             return
 
-        now = datetime.now()
-        block.actual_end_at = now
-        if block.actual_start_at:
-            block.actual_duration_min = int(
-                (now - block.actual_start_at).total_seconds() / 60
-            )
-
-        await create_log(session, allowed_user.telegram_id, "block_finished_early",
-                         task_block_id=block_id,
-                         payload={"actual_duration_min": block.actual_duration_min})
+        block.status = "skipped"
+        await create_log(session, allowed_user.telegram_id, "block_skipped",
+                         task_block_id=block_id)
         await session.commit()
 
-    # Отменяем оставшиеся jobs (включая scheduled end)
-    cancel_block_jobs(block_id)
-
-    # Показываем опросник
-    await send_block_end_questionnaire(block_id)
-    await callback.answer("Блок завершён досрочно")
+    await callback.message.edit_text("⏭ Помодоро пропущен.")
+    await callback.answer()
 
 
 # === Опросник: Выполнено / Частично / Не выполнено ===
 
 
+async def _send_questionnaire(callback: CallbackQuery, block_id: int):
+    """Показать опросник завершения помодоро."""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Выполнено", callback_data=f"quest_done:{block_id}"),
+            InlineKeyboardButton(text="⚡ Частично", callback_data=f"quest_partial:{block_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Не выполнено", callback_data=f"quest_failed:{block_id}"),
+        ],
+    ])
+    await callback.message.edit_text(
+        "🏁 *Помодоро завершён!*\nКак прошло?",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+
+
+def questionnaire_keyboard(block_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура опросника (для использования из reminders.py)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Выполнено", callback_data=f"quest_done:{block_id}"),
+            InlineKeyboardButton(text="⚡ Частично", callback_data=f"quest_partial:{block_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Не выполнено", callback_data=f"quest_failed:{block_id}"),
+        ],
+    ])
+
+
 @router.callback_query(F.data.startswith("quest_done:"))
 async def cb_quest_done(callback: CallbackQuery, allowed_user: AllowedUser):
-    """Блок выполнен полностью."""
+    """Помодоро выполнен полностью."""
     block_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
@@ -118,11 +126,11 @@ async def cb_quest_done(callback: CallbackQuery, allowed_user: AllowedUser):
                              task_block_id=block_id)
             await session.commit()
 
-    await stop_spam_and_cleanup(allowed_user.telegram_id)
-    cancel_block_jobs(block_id)
+    # Останавливаем спам если был
+    await _stop_spam_safe(allowed_user.telegram_id)
 
     await callback.message.edit_text(
-        f"✅ *Выполнено!* Отлично, так держать! 💪",
+        "✅ *Выполнено!* Отлично, так держать! 💪",
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -130,7 +138,7 @@ async def cb_quest_done(callback: CallbackQuery, allowed_user: AllowedUser):
 
 @router.callback_query(F.data.startswith("quest_partial:"))
 async def cb_quest_partial(callback: CallbackQuery, allowed_user: AllowedUser):
-    """Блок выполнен частично — спрашиваем причину."""
+    """Помодоро выполнен частично — спрашиваем причину."""
     block_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
@@ -141,21 +149,10 @@ async def cb_quest_partial(callback: CallbackQuery, allowed_user: AllowedUser):
                              task_block_id=block_id)
             await session.commit()
 
-    await stop_spam_and_cleanup(allowed_user.telegram_id)
-    cancel_block_jobs(block_id)
+    await _stop_spam_safe(allowed_user.telegram_id)
 
     # Спрашиваем причину
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="⏰ Не успел", callback_data=f"reason:no_time:{block_id}"),
-            InlineKeyboardButton(text="🌀 Отвлёкся", callback_data=f"reason:distracted:{block_id}"),
-        ],
-        [
-            InlineKeyboardButton(text="🚫 Неактуально", callback_data=f"reason:irrelevant:{block_id}"),
-            InlineKeyboardButton(text="📝 Другое", callback_data=f"reason:other:{block_id}"),
-        ],
-    ])
-
+    keyboard = _reason_keyboard(block_id)
     await callback.message.edit_text(
         "⚡ *Частично выполнено*\nЧто помешало?",
         reply_markup=keyboard,
@@ -166,7 +163,7 @@ async def cb_quest_partial(callback: CallbackQuery, allowed_user: AllowedUser):
 
 @router.callback_query(F.data.startswith("quest_failed:"))
 async def cb_quest_failed(callback: CallbackQuery, allowed_user: AllowedUser):
-    """Блок не выполнен — спрашиваем причину."""
+    """Помодоро не выполнен — спрашиваем причину."""
     block_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
@@ -177,20 +174,9 @@ async def cb_quest_failed(callback: CallbackQuery, allowed_user: AllowedUser):
                              task_block_id=block_id)
             await session.commit()
 
-    await stop_spam_and_cleanup(allowed_user.telegram_id)
-    cancel_block_jobs(block_id)
+    await _stop_spam_safe(allowed_user.telegram_id)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="⏰ Не успел", callback_data=f"reason:no_time:{block_id}"),
-            InlineKeyboardButton(text="🌀 Отвлёкся", callback_data=f"reason:distracted:{block_id}"),
-        ],
-        [
-            InlineKeyboardButton(text="🚫 Неактуально", callback_data=f"reason:irrelevant:{block_id}"),
-            InlineKeyboardButton(text="📝 Другое", callback_data=f"reason:other:{block_id}"),
-        ],
-    ])
-
+    keyboard = _reason_keyboard(block_id)
     await callback.message.edit_text(
         "❌ *Не выполнено*\nЧто помешало?",
         reply_markup=keyboard,
@@ -200,6 +186,20 @@ async def cb_quest_failed(callback: CallbackQuery, allowed_user: AllowedUser):
 
 
 # === Причины ===
+
+
+def _reason_keyboard(block_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура причин невыполнения."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⏰ Не успел", callback_data=f"reason:no_time:{block_id}"),
+            InlineKeyboardButton(text="🌀 Отвлёкся", callback_data=f"reason:distracted:{block_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="🚫 Неактуально", callback_data=f"reason:irrelevant:{block_id}"),
+            InlineKeyboardButton(text="📝 Другое", callback_data=f"reason:other:{block_id}"),
+        ],
+    ])
 
 
 @router.callback_query(F.data.startswith("reason:"))
@@ -219,9 +219,7 @@ async def cb_reason(callback: CallbackQuery, state: FSMContext, allowed_user: Al
         # Просим ввести причину
         await state.set_state(ReasonStates.waiting_reason)
         await state.update_data(block_id=block_id)
-        await callback.message.edit_text(
-            "📝 Напиши причину:",
-        )
+        await callback.message.edit_text("📝 Напиши причину:")
         await callback.answer()
         return
 
@@ -265,15 +263,13 @@ async def process_other_reason(message: Message, state: FSMContext, allowed_user
 
 @router.message(F.text, ~F.text.startswith("/"))
 async def handle_user_message_during_spam(message: Message, allowed_user: AllowedUser):
-    """Если пользователь написал что-то во время спама — остановить спам и показать опросник.
-    Не перехватываем команды (начинающиеся с /)."""
+    """Если пользователь написал что-то во время спама — остановить спам и показать опросник."""
     from backend.bot.reminders import _spam_tasks, _spam_messages
 
     user_id = allowed_user.telegram_id
 
     if user_id in _spam_tasks:
-        # Останавливаем спам, удаляем сообщения
-        await stop_spam_and_cleanup(user_id)
+        await _stop_spam_safe(user_id)
 
         # Находим последний активный блок пользователя
         async with async_session() as session:
@@ -288,4 +284,21 @@ async def handle_user_message_during_spam(message: Message, allowed_user: Allowe
             active_block = result.scalars().first()
 
         if active_block:
-            await send_block_end_questionnaire(active_block.id)
+            keyboard = questionnaire_keyboard(active_block.id)
+            await message.answer(
+                "🏁 *Помодоро завершён!*\nКак прошло?",
+                reply_markup=keyboard,
+                parse_mode="Markdown",
+            )
+
+
+# === Утилиты ===
+
+
+async def _stop_spam_safe(user_id: int):
+    """Безопасно остановить спам (с обработкой ошибок импорта)."""
+    try:
+        from backend.bot.reminders import stop_spam_and_cleanup
+        await stop_spam_and_cleanup(user_id)
+    except (ImportError, Exception) as e:
+        logger.warning(f"Не удалось остановить спам для {user_id}: {e}")
