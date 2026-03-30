@@ -1,7 +1,8 @@
-"""Обработчики inline-кнопок: завершить помодоро, опросник, причины (v1.2.0)."""
+"""Обработчики inline-кнопок: помодоро, события, опросник, причины (v1.2.0)."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import Router, F
 from aiogram.types import (
@@ -15,7 +16,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 from backend.db.database import async_session
 from backend.db.crud.blocks import get_block, create_log
-from backend.db.models import AllowedUser
+from backend.db.crud.tasks import get_task, get_tasks_for_today, update_task
+from backend.db.models import AllowedUser, TaskBlock, Event
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,214 @@ router = Router()
 class ReasonStates(StatesGroup):
     """FSM для ввода причины «Другое»."""
     waiting_reason = State()
+
+
+# === Помодоро: выбор задачи ===
+
+
+@router.callback_query(F.data.startswith("pomo:task:"))
+async def cb_pomo_select_task(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Пользователь выбрал задачу для помодоро."""
+    parts = callback.data.split(":")
+    task_id = int(parts[2])
+    pomo_number = int(parts[3])
+
+    from backend.db.crud.users import get_or_create_user
+    async with async_session() as session:
+        user = await get_or_create_user(session, allowed_user.telegram_id)
+        task = await get_task(session, task_id, allowed_user.telegram_id)
+
+        if not task:
+            await callback.answer("Задача не найдена", show_alert=True)
+            return
+
+        work_min = user.pomodoro_work_min or 25
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
+        now = datetime.now(tz)
+
+        # Создаём помодоро-блок с привязкой к задаче
+        block = TaskBlock(
+            user_id=allowed_user.telegram_id,
+            task_id=task_id,
+            day=now.date(),
+            start_time=now.time(),
+            duration_min=work_min,
+            status="active",
+            pomodoro_number=pomo_number,
+            actual_start_at=datetime.now(),
+        )
+        session.add(block)
+
+        # Меняем статус задачи на in_progress если была grooming
+        if task.status == "grooming":
+            task.status = "in_progress"
+
+        await create_log(session, allowed_user.telegram_id, "block_active",
+                         task_block_id=None,
+                         payload={"task_id": task_id, "pomodoro_number": pomo_number})
+        await session.commit()
+        block_id = block.id
+
+    # Формируем сообщение с описанием и ссылкой
+    text_lines = [f"🍅 *Помодоро #{pomo_number}* — {work_min} мин"]
+    text_lines.append(f"📝 {task.name}")
+
+    description = getattr(task, 'description', None)
+    link = getattr(task, 'link', None)
+    if description:
+        text_lines.append(f"📄 _{description}_")
+    if link:
+        text_lines.append(f"🔗 {link}")
+
+    text_lines.append("\nФокус! 🎯")
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ Завершить",
+            callback_data=f"block_finish:{block_id}",
+        )],
+    ])
+
+    await callback.message.edit_text(
+        "\n".join(text_lines),
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("pomo:notask:"))
+async def cb_pomo_no_task(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Помодоро без привязки к задаче."""
+    pomo_number = int(callback.data.split(":")[2])
+
+    from backend.db.crud.users import get_or_create_user
+    async with async_session() as session:
+        user = await get_or_create_user(session, allowed_user.telegram_id)
+        work_min = user.pomodoro_work_min or 25
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
+        now = datetime.now(tz)
+
+        block = TaskBlock(
+            user_id=allowed_user.telegram_id,
+            task_id=None,
+            day=now.date(),
+            start_time=now.time(),
+            duration_min=work_min,
+            status="active",
+            pomodoro_number=pomo_number,
+            actual_start_at=datetime.now(),
+        )
+        session.add(block)
+        await create_log(session, allowed_user.telegram_id, "block_active",
+                         payload={"pomodoro_number": pomo_number, "no_task": True})
+        await session.commit()
+        block_id = block.id
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ Завершить",
+            callback_data=f"block_finish:{block_id}",
+        )],
+    ])
+
+    await callback.message.edit_text(
+        f"🍅 *Помодоро #{pomo_number}* — {work_min} мин\nФокус без задачи! 🎯",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("pomo:skip:"))
+async def cb_pomo_skip(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Пропуск помодоро."""
+    pomo_number = int(callback.data.split(":")[2])
+
+    async with async_session() as session:
+        await create_log(session, allowed_user.telegram_id, "block_skipped",
+                         payload={"pomodoro_number": pomo_number})
+        await session.commit()
+
+    await callback.message.edit_text(f"⏭ Помодоро #{pomo_number} пропущен.")
+    await callback.answer()
+
+
+# === Завершение события ===
+
+
+@router.callback_query(F.data.startswith("event:finish:"))
+async def cb_event_finish(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Кнопка «✅ Завершить событие»."""
+    event_id = int(callback.data.split(":")[2])
+
+    async with async_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(Event).where(Event.id == event_id))
+        event = result.scalar_one_or_none()
+
+        if not event:
+            await callback.answer("Событие не найдено", show_alert=True)
+            return
+
+        if event.status == "done":
+            await callback.answer("Уже завершено", show_alert=True)
+            return
+
+        event.status = "done"
+        await create_log(session, allowed_user.telegram_id, "event_finished",
+                         payload={"event_id": event_id, "event_name": event.name})
+        await session.commit()
+
+    # Останавливаем спам если был
+    await _stop_spam_safe(allowed_user.telegram_id)
+
+    from backend.bot.scheduler import cancel_event_jobs
+    cancel_event_jobs(event_id)
+
+    await callback.message.edit_text(
+        f"✅ Событие *{event.name}* завершено!",
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+# === Перенос задач (итог дня) ===
+
+
+@router.callback_query(F.data.startswith("eod:reschedule:"))
+async def cb_eod_reschedule(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Перенос незавершённых задач на указанную дату."""
+    target_date_str = callback.data.split(":")[2]
+    target_date = date.fromisoformat(target_date_str)
+
+    async with async_session() as session:
+        from backend.db.crud.users import get_or_create_user
+        user = await get_or_create_user(session, allowed_user.telegram_id)
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
+        today = datetime.now(tz).date()
+
+        tasks = await get_tasks_for_today(session, allowed_user.telegram_id, today)
+        unfinished = [t for t in tasks if (t.status or 'grooming') in ('grooming', 'in_progress')]
+
+        count = 0
+        for task in unfinished:
+            await update_task(session, task.id, allowed_user.telegram_id,
+                              scheduled_date=target_date)
+            count += 1
+
+        await create_log(session, allowed_user.telegram_id, "tasks_rescheduled",
+                         payload={"count": count, "target_date": target_date_str})
+        await session.commit()
+
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_label = f"{day_names[target_date.weekday()]}, {target_date.strftime('%d.%m')}"
+
+    await callback.message.edit_text(
+        f"🔄 *{count} задач* перенесено на {day_label}",
+        parse_mode="Markdown",
+    )
+    await callback.answer(f"Перенесено {count} задач")
 
 
 # === Завершить помодоро/блок ===

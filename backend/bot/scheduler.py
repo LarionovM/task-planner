@@ -1,10 +1,10 @@
-"""APScheduler — планировщик напоминаний.
+"""APScheduler — помодоро-планировщик (v1.2.0).
 
 Отвечает за:
-- Инициализацию AsyncIOScheduler
-- Планирование jobs для блоков (prep, start, end, pomodoro, max_duration)
-- Восстановление jobs при рестарте сервера
-- Планирование итога дня
+- Автоматические помодоро-циклы (25+5, каждый 4-й — длинный перерыв)
+- Планирование уведомлений о событиях (созвоны, встречи)
+- Итог дня
+- Восстановление при рестарте сервера
 """
 
 import logging
@@ -18,9 +18,11 @@ from backend.db.crud.blocks import (
     get_planned_blocks_from_today,
     get_active_blocks,
     get_blocks_for_day,
+    get_weekly_schedule,
 )
 from backend.db.crud.users import get_or_create_user, get_all_active_users
-from backend.db.models import TaskBlock
+from backend.db.crud.events import get_events_for_day
+from backend.db.models import TaskBlock, Event
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,9 @@ scheduler = AsyncIOScheduler()
 
 # Ссылка на бота (устанавливается при инициализации)
 _bot = None
+
+# Счётчик помодоро за день {user_id: count}
+_pomodoro_counts: dict[int, int] = {}
 
 
 def init_scheduler(bot) -> AsyncIOScheduler:
@@ -45,9 +50,9 @@ def get_bot():
     return _bot
 
 
-def _make_job_id(block_id: int, job_type: str) -> str:
+def _make_job_id(prefix: str, obj_id: int, job_type: str) -> str:
     """Формирует уникальный ID для job-а."""
-    return f"block_{block_id}_{job_type}"
+    return f"{prefix}_{obj_id}_{job_type}"
 
 
 def _user_now(tz_name: str) -> datetime:
@@ -63,139 +68,7 @@ def _combine_user_dt(day: date, t: time, tz_name: str) -> datetime:
     return naive.replace(tzinfo=tz)
 
 
-async def schedule_block_jobs(block: TaskBlock, user_tz: str = "Europe/Moscow") -> None:
-    """Планирует все jobs для одного блока.
-
-    Jobs:
-    - reminder_prep: за reminder_before_min до старта
-    - reminder_start: в момент старта
-    - block_end: в момент окончания (для fixed)
-    - min_duration_reached: через min_duration (для range)
-    - max_duration_reminder: через max_duration (для open/range)
-    - pomodoro_*: циклы 25+5 мин (если use_pomodoro)
-    """
-    from backend.bot.reminders import (
-        send_prep_reminder,
-        send_start_reminder,
-        send_block_end_questionnaire,
-        send_min_duration_reached,
-        send_max_duration_reminder,
-        schedule_pomodoro_jobs,
-    )
-
-    now = _user_now(user_tz)
-    block_start_dt = _combine_user_dt(block.day, block.start_time, user_tz)
-
-    # Получаем reminder_before_min из первой задачи блока
-    reminder_before = 5  # default
-    if block.task_ids:
-        async with async_session() as session:
-            from backend.db.crud.tasks import get_task
-            task = await get_task(session, block.task_ids[0], block.user_id)
-            if task:
-                reminder_before = task.reminder_before_min or 5
-
-    # === 1. Подготовка (за N мин до старта) ===
-    prep_dt = block_start_dt - timedelta(minutes=reminder_before)
-    if prep_dt > now:
-        job_id = _make_job_id(block.id, "prep")
-        _safe_add_job(
-            send_prep_reminder,
-            run_date=prep_dt,
-            args=[block.id],
-            id=job_id,
-        )
-        logger.debug(f"Job {job_id} запланирован на {prep_dt}")
-
-    # === 2. Старт блока ===
-    if block_start_dt > now:
-        job_id = _make_job_id(block.id, "start")
-        _safe_add_job(
-            send_start_reminder,
-            run_date=block_start_dt,
-            args=[block.id],
-            id=job_id,
-        )
-        logger.debug(f"Job {job_id} запланирован на {block_start_dt}")
-
-    # === 3. Окончание / напоминания по типу блока ===
-    if block.duration_type == "fixed":
-        # Фиксированный блок: опросник по окончании
-        duration = block.duration_min or 60
-        end_dt = block_start_dt + timedelta(minutes=duration)
-        if end_dt > now:
-            job_id = _make_job_id(block.id, "end")
-            _safe_add_job(
-                send_block_end_questionnaire,
-                run_date=end_dt,
-                args=[block.id],
-                id=job_id,
-            )
-
-        # Pomodoro jobs если включён
-        if block.task_ids:
-            async with async_session() as session:
-                from backend.db.crud.tasks import get_task
-                task = await get_task(session, block.task_ids[0], block.user_id)
-                if task and task.use_pomodoro and duration >= 30:
-                    await schedule_pomodoro_jobs(block, user_tz, now)
-
-    elif block.duration_type == "range":
-        # Диапазон: напоминание о min_duration, потом max_duration
-        if block.min_duration_min:
-            min_dt = block_start_dt + timedelta(minutes=block.min_duration_min)
-            if min_dt > now:
-                job_id = _make_job_id(block.id, "min_reached")
-                _safe_add_job(
-                    send_min_duration_reached,
-                    run_date=min_dt,
-                    args=[block.id],
-                    id=job_id,
-                )
-        if block.max_duration_min:
-            max_dt = block_start_dt + timedelta(minutes=block.max_duration_min)
-            if max_dt > now:
-                job_id = _make_job_id(block.id, "max_reminder")
-                _safe_add_job(
-                    send_max_duration_reminder,
-                    run_date=max_dt,
-                    args=[block.id],
-                    id=job_id,
-                )
-
-    elif block.duration_type == "open":
-        # Открытый блок: напоминание через max_duration (если задан)
-        if block.max_duration_min:
-            max_dt = block_start_dt + timedelta(minutes=block.max_duration_min)
-            if max_dt > now:
-                job_id = _make_job_id(block.id, "max_reminder")
-                _safe_add_job(
-                    send_max_duration_reminder,
-                    run_date=max_dt,
-                    args=[block.id],
-                    id=job_id,
-                )
-
-    logger.info(f"Jobs запланированы для блока #{block.id} ({block.block_name})")
-
-
-def cancel_block_jobs(block_id: int) -> None:
-    """Отменяет все jobs для блока."""
-    prefixes = ["prep", "start", "end", "min_reached", "max_reminder"]
-    # Также отменяем pomodoro jobs
-    for i in range(20):  # максимум 20 pomodoro-циклов
-        prefixes.append(f"pomo_break_{i}")
-        prefixes.append(f"pomo_resume_{i}")
-
-    for suffix in prefixes:
-        job_id = _make_job_id(block_id, suffix)
-        job = scheduler.get_job(job_id)
-        if job:
-            scheduler.remove_job(job_id)
-            logger.debug(f"Job {job_id} отменён")
-
-
-def _safe_add_job(func, run_date, args, id):
+def _safe_add_job(func, run_date, args, id, **kwargs):
     """Добавляет job, удаляя старый с тем же ID если есть."""
     existing = scheduler.get_job(id)
     if existing:
@@ -207,126 +80,196 @@ def _safe_add_job(func, run_date, args, id):
         args=args,
         id=id,
         misfire_grace_time=300,  # 5 мин grace period
+        **kwargs,
     )
 
 
-async def restore_jobs_on_startup() -> None:
-    """Восстанавливает все jobs при рестарте сервера.
+def cancel_block_jobs(block_id: int) -> None:
+    """Отменяет все jobs для блока."""
+    for suffix in ["start", "end", "break", "resume"]:
+        job_id = _make_job_id("pomo", block_id, suffix)
+        job = scheduler.get_job(job_id)
+        if job:
+            scheduler.remove_job(job_id)
+            logger.debug(f"Job {job_id} отменён")
 
-    1. Planned блоки → планирует prep/start/end jobs
-    2. Active блоки без actual_end_at → уведомляет пользователя
-    3. Итог дня для всех пользователей
+
+def cancel_event_jobs(event_id: int) -> None:
+    """Отменяет все jobs для события."""
+    for suffix in ["prep", "start", "end"]:
+        job_id = _make_job_id("event", event_id, suffix)
+        job = scheduler.get_job(job_id)
+        if job:
+            scheduler.remove_job(job_id)
+            logger.debug(f"Job {job_id} отменён")
+
+
+# === Помодоро-циклы ===
+
+
+async def schedule_pomodoro_cycle(user_id: int, user_tz: str = "Europe/Moscow") -> None:
+    """Планирует весь день помодоро-циклов для пользователя.
+
+    Циклы: 25 мин работа → 5 мин перерыв → 25 мин → 5 мин → ... → 25 мин → 30 мин (длинный перерыв).
+    Помодоро не отправляется во время активных событий (проверяется в reminders.py).
     """
-    from backend.bot.reminders import send_restart_active_block_notification
-
-    logger.info("Восстановление jobs при рестарте...")
+    from backend.bot.reminders import send_pomodoro_start, send_pomodoro_break, send_pomodoro_end_questionnaire
 
     async with async_session() as session:
-        # 1. Planned блоки → запланировать jobs
-        planned_blocks = await get_planned_blocks_from_today(session)
-        logger.info(f"Найдено {len(planned_blocks)} planned блоков")
+        user = await get_or_create_user(session, user_id)
+        schedule = await get_weekly_schedule(session, user_id)
 
-        for block in planned_blocks:
-            user = await get_or_create_user(session, block.user_id)
-            user_tz = user.timezone or "Europe/Moscow"
-            await schedule_block_jobs(block, user_tz)
+    tz = ZoneInfo(user_tz)
+    now = datetime.now(tz)
+    today = now.date()
+    weekday = today.weekday()
 
-        # 2. Active блоки (сервер упал во время выполнения)
-        active_blocks = await get_active_blocks(session)
-        logger.info(f"Найдено {len(active_blocks)} активных блоков при рестарте")
+    # Проверяем: сегодня не выходной?
+    day_sched = next((s for s in schedule if s.day_of_week == weekday), None)
+    if not day_sched or day_sched.is_day_off:
+        logger.debug(f"Помодоро для user={user_id}: сегодня выходной")
+        return
 
-        for block in active_blocks:
-            user = await get_or_create_user(session, block.user_id)
-            user_tz = user.timezone or "Europe/Moscow"
-            now = _user_now(user_tz)
+    # Настройки помодоро
+    work_min = user.pomodoro_work_min or 25
+    short_break = user.pomodoro_short_break_min or 5
+    long_break = user.pomodoro_long_break_min or 30
+    cycles_before_long = user.pomodoro_cycles_before_long or 4
 
-            # Определяем когда блок должен закончиться
-            block_start_dt = _combine_user_dt(block.day, block.start_time, user_tz)
-            if block.duration_type == "fixed":
-                block_end_dt = block_start_dt + timedelta(minutes=block.duration_min or 60)
-            elif block.duration_type == "range":
-                block_end_dt = block_start_dt + timedelta(minutes=block.max_duration_min or 60)
-            else:
-                # open — заканчивается по max_duration или через 8 часов (fallback)
-                block_end_dt = block_start_dt + timedelta(minutes=block.max_duration_min or 480)
+    # Рабочие часы
+    active_from = day_sched.active_from
+    active_to = day_sched.active_to
+    if isinstance(active_from, str):
+        h, m = map(int, active_from.split(":"))
+        active_from = time(h, m)
+    if isinstance(active_to, str):
+        h, m = map(int, active_to.split(":"))
+        active_to = time(h, m)
 
-            # Блок ещё идёт — запланировать end questionnaire вместо спрашивания
-            if block_end_dt > now:
-                from backend.bot.reminders import send_block_end_questionnaire
-                job_id = _make_job_id(block.id, "end")
-                _safe_add_job(
-                    send_block_end_questionnaire,
-                    run_date=block_end_dt,
-                    args=[block.id],
-                    id=job_id,
-                )
-                logger.info(f"Блок #{block.id} ещё идёт — запланирован end questionnaire на {block_end_dt}")
+    # Стартуем от active_from (или от текущего времени, если уже позже)
+    start_dt = _combine_user_dt(today, active_from, user_tz)
+    end_dt = _combine_user_dt(today, active_to, user_tz)
 
-                # Для range: запланировать min_duration_reached если ещё не прошло
-                if block.duration_type == "range" and block.min_duration_min:
-                    min_dt = block_start_dt + timedelta(minutes=block.min_duration_min)
-                    if min_dt > now:
-                        from backend.bot.reminders import send_min_duration_reached
-                        min_job_id = _make_job_id(block.id, "min_dur")
-                        _safe_add_job(
-                            send_min_duration_reached,
-                            run_date=min_dt,
-                            args=[block.id],
-                            id=min_job_id,
-                        )
+    if now > end_dt:
+        logger.debug(f"Помодоро для user={user_id}: рабочий день закончился")
+        return
 
-                # Для open/range: запланировать max_duration_reminder
-                if block.actual_start_at and block.max_duration_min:
-                    max_dt = block.actual_start_at + timedelta(minutes=block.max_duration_min)
-                    max_dt_aware = max_dt.replace(tzinfo=ZoneInfo(user_tz)) if max_dt.tzinfo is None else max_dt
-                    if max_dt_aware > now:
-                        from backend.bot.reminders import send_max_duration_reminder
-                        max_job_id = _make_job_id(block.id, "max_reminder")
-                        _safe_add_job(
-                            send_max_duration_reminder,
-                            run_date=max_dt_aware,
-                            args=[block.id],
-                            id=max_job_id,
-                        )
+    # Если сейчас позже начала — начинаем с ближайшего полного цикла
+    if now > start_dt:
+        # Округляем до ближайшего будущего слота
+        elapsed = (now - start_dt).total_seconds() / 60
+        cycle_len = work_min + short_break
+        next_cycle = int(elapsed / cycle_len) + 1
+        start_dt = start_dt + timedelta(minutes=next_cycle * cycle_len - short_break)
+        # Номер помодоро
+        start_pomo_number = next_cycle + 1
+    else:
+        start_pomo_number = 1
 
-                # Pomodoro jobs если нужно
-                if block.duration_type == "fixed" and block.task_ids:
-                    from backend.db.crud.tasks import get_task
-                    task = await get_task(session, block.task_ids[0], block.user_id)
-                    if task and task.use_pomodoro:
-                        from backend.bot.reminders import schedule_pomodoro_jobs
-                        await schedule_pomodoro_jobs(block, user_tz, now)
+    # Планируем помодоро-циклы
+    current_dt = start_dt if start_dt > now else now + timedelta(minutes=1)
+    pomo_number = start_pomo_number
 
-                continue
+    while current_dt < end_dt:
+        # Помодоро-старт
+        if current_dt > now:
+            job_id = f"pomo_start_{user_id}_{pomo_number}"
+            _safe_add_job(
+                send_pomodoro_start,
+                run_date=current_dt,
+                args=[user_id, pomo_number],
+                id=job_id,
+            )
 
-            # Блок уже должен был закончиться — спросить пользователя
-            # Но сначала проверим max_duration для open/range
-            if block.actual_start_at and block.max_duration_min:
-                max_dt = block.actual_start_at + timedelta(minutes=block.max_duration_min)
-                max_dt_aware = max_dt.replace(tzinfo=ZoneInfo(user_tz)) if max_dt.tzinfo is None else max_dt
-                if max_dt_aware > now:
-                    from backend.bot.reminders import send_max_duration_reminder
-                    job_id = _make_job_id(block.id, "max_reminder")
-                    _safe_add_job(
-                        send_max_duration_reminder,
-                        run_date=max_dt_aware,
-                        args=[block.id],
-                        id=job_id,
-                    )
-                    continue
+        # Конец помодоро (опросник) через work_min
+        end_pomo_dt = current_dt + timedelta(minutes=work_min)
+        if end_pomo_dt > now and end_pomo_dt < end_dt:
+            # Опросник будет вызываться из callback при создании блока
+            # Но для блоков без задачи нужен scheduled end
+            pass
 
-            # Блок просрочен — спросить как прошёл
-            await send_restart_active_block_notification(block)
+        # Перерыв
+        is_long_break = (pomo_number % cycles_before_long == 0)
+        break_min = long_break if is_long_break else short_break
 
-        # 3. Итог дня и проверка пустых слотов для всех пользователей
-        all_users = await get_all_active_users(session)
-        for user in all_users:
-            user_tz = user.timezone or "Europe/Moscow"
-            await schedule_day_summary(user.telegram_id, user_tz)
-            await schedule_empty_slots_check(user.telegram_id, user_tz)
+        break_dt = current_dt + timedelta(minutes=work_min)
+        if break_dt > now and break_dt < end_dt:
+            job_id = f"pomo_break_{user_id}_{pomo_number}"
+            _safe_add_job(
+                send_pomodoro_break,
+                run_date=break_dt,
+                args=[user_id, pomo_number, is_long_break],
+                id=job_id,
+            )
 
-    jobs_count = len(scheduler.get_jobs())
-    logger.info(f"Восстановление завершено. Всего jobs: {jobs_count}")
+        # Следующий помодоро после перерыва
+        current_dt = break_dt + timedelta(minutes=break_min)
+        pomo_number += 1
+
+    _pomodoro_counts[user_id] = pomo_number - 1
+    logger.info(f"Помодоро для user={user_id}: запланировано {pomo_number - start_pomo_number} циклов")
+
+
+# === Планирование событий ===
+
+
+async def schedule_event_jobs(event: Event, user_tz: str = "Europe/Moscow") -> None:
+    """Планирует jobs для одного события (prep, start, end)."""
+    from backend.bot.reminders import send_event_prep_reminder, send_event_start, send_event_end_reminder
+
+    now = _user_now(user_tz)
+
+    if isinstance(event.start_time, str):
+        h, m = map(int, event.start_time.split(":"))
+        start_time = time(h, m)
+    else:
+        start_time = event.start_time
+
+    if isinstance(event.end_time, str):
+        h, m = map(int, event.end_time.split(":"))
+        end_time = time(h, m)
+    else:
+        end_time = event.end_time
+
+    event_start_dt = _combine_user_dt(event.day, start_time, user_tz)
+    event_end_dt = _combine_user_dt(event.day, end_time, user_tz)
+
+    # Подготовка (за reminder_before_min)
+    reminder_before = event.reminder_before_min or 5
+    prep_dt = event_start_dt - timedelta(minutes=reminder_before)
+    if prep_dt > now:
+        job_id = _make_job_id("event", event.id, "prep")
+        _safe_add_job(
+            send_event_prep_reminder,
+            run_date=prep_dt,
+            args=[event.id],
+            id=job_id,
+        )
+
+    # Старт события
+    if event_start_dt > now:
+        job_id = _make_job_id("event", event.id, "start")
+        _safe_add_job(
+            send_event_start,
+            run_date=event_start_dt,
+            args=[event.id],
+            id=job_id,
+        )
+
+    # Конец события (напоминание о завершении)
+    if event_end_dt > now:
+        job_id = _make_job_id("event", event.id, "end")
+        _safe_add_job(
+            send_event_end_reminder,
+            run_date=event_end_dt,
+            args=[event.id],
+            id=job_id,
+        )
+
+    logger.info(f"Jobs для события #{event.id} «{event.name}» запланированы")
+
+
+# === Итог дня ===
 
 
 async def schedule_day_summary(user_id: int, user_tz: str) -> None:
@@ -348,18 +291,6 @@ async def schedule_day_summary(user_id: int, user_tz: str) -> None:
     if summary_dt <= now:
         summary_dt += timedelta(days=1)
 
-    # Проверяем тихое время: если итог попадает в тихое — перенести на quiet_end
-    quiet_start = user.quiet_start or time(23, 0)
-    quiet_end = user.quiet_end or time(8, 0)
-
-    summary_time = summary_dt.time()
-    in_quiet = _is_in_quiet_time(summary_time, quiet_start, quiet_end)
-
-    if in_quiet:
-        # Переносим на quiet_end следующего утра
-        next_day = summary_dt.date() + timedelta(days=1)
-        summary_dt = datetime.combine(next_day, quiet_end).replace(tzinfo=tz)
-
     job_id = f"day_summary_{user_id}"
     _safe_add_job(
         send_day_summary,
@@ -370,78 +301,48 @@ async def schedule_day_summary(user_id: int, user_tz: str) -> None:
     logger.debug(f"Итог дня для user={user_id} запланирован на {summary_dt}")
 
 
-async def schedule_empty_slots_check(user_id: int, user_tz: str) -> None:
-    """Планирует проверку пустых слотов: вечером (за час до day_end_time) и утром (active_from)."""
-    from backend.bot.reminders import (
-        send_empty_slots_evening_reminder,
-        send_empty_slots_morning_reminder,
-    )
+# === Восстановление при рестарте ===
+
+
+async def restore_jobs_on_startup() -> None:
+    """Восстанавливает все jobs при рестарте сервера.
+
+    1. Помодоро-циклы для всех активных пользователей
+    2. События на сегодня
+    3. Активные блоки без завершения → уведомить
+    4. Итог дня для всех
+    """
+    from backend.bot.reminders import send_restart_notification
+
+    logger.info("Восстановление jobs при рестарте...")
 
     async with async_session() as session:
-        user = await get_or_create_user(session, user_id)
-        from backend.db.crud.users import get_spam_config
-        spam_config = await get_spam_config(session, user_id)
-        if not spam_config or not spam_config.empty_slots_enabled:
-            return
+        all_users = await get_all_active_users(session)
 
-        from backend.db.crud.blocks import get_weekly_schedule
-        schedule = await get_weekly_schedule(session, user_id)
+    for user in all_users:
+        user_tz = user.timezone or "Europe/Moscow"
+        tz = ZoneInfo(user_tz)
+        today = datetime.now(tz).date()
 
-    tz = ZoneInfo(user_tz)
-    now = datetime.now(tz)
-    today = now.date()
+        # 1. Помодоро-циклы на сегодня
+        await schedule_pomodoro_cycle(user.telegram_id, user_tz)
 
-    # === Вечернее напоминание ===
-    # За 1 час до day_end_time
-    day_end = user.day_end_time or time(23, 50)
-    evening_time = (datetime.combine(today, day_end) - timedelta(hours=1)).time()
-    evening_dt = datetime.combine(today, evening_time).replace(tzinfo=tz)
+        # 2. События на сегодня
+        async with async_session() as session:
+            events = await get_events_for_day(session, user.telegram_id, today)
+            for event in events:
+                if event.status not in ("done",):
+                    await schedule_event_jobs(event, user_tz)
 
-    # Если время уже прошло — на завтра
-    if evening_dt <= now:
-        evening_dt += timedelta(days=1)
+        # 3. Активные блоки (сервер упал во время помодоро)
+        async with async_session() as session:
+            active_blocks = await get_active_blocks(session)
+            for block in active_blocks:
+                if block.user_id == user.telegram_id:
+                    await send_restart_notification(user.telegram_id, block)
 
-    # Проверяем: не в тихое время
-    quiet_start = user.quiet_start or time(23, 0)
-    quiet_end = user.quiet_end or time(8, 0)
-    if not _is_in_quiet_time(evening_dt.time(), quiet_start, quiet_end):
-        job_id = f"empty_slots_evening_{user_id}"
-        _safe_add_job(
-            send_empty_slots_evening_reminder,
-            run_date=evening_dt,
-            args=[user_id],
-            id=job_id,
-        )
-        logger.debug(f"Проверка пустых слотов (вечер) для user={user_id} на {evening_dt}")
+        # 4. Итог дня
+        await schedule_day_summary(user.telegram_id, user_tz)
 
-    # === Утреннее напоминание ===
-    # В active_from рабочего дня (завтра)
-    tomorrow = today + timedelta(days=1)
-    tomorrow_weekday = tomorrow.weekday()
-    day_sched = next((s for s in schedule if s.day_of_week == tomorrow_weekday), None)
-
-    if day_sched and not day_sched.is_day_off:
-        morning_dt = datetime.combine(tomorrow, day_sched.active_from).replace(tzinfo=tz)
-        # Если завтра уже прошло (маловероятно, но на всякий случай)
-        if morning_dt > now:
-            job_id = f"empty_slots_morning_{user_id}"
-            _safe_add_job(
-                send_empty_slots_morning_reminder,
-                run_date=morning_dt,
-                args=[user_id],
-                id=job_id,
-            )
-            logger.debug(f"Проверка пустых слотов (утро) для user={user_id} на {morning_dt}")
-
-
-def _is_in_quiet_time(t: time, quiet_start: time, quiet_end: time) -> bool:
-    """Проверяет, попадает ли время в тихое время.
-
-    Поддерживает перенос через полночь (23:00 → 08:00).
-    """
-    if quiet_start <= quiet_end:
-        # Тихое время внутри дня (напр. 01:00-06:00)
-        return quiet_start <= t <= quiet_end
-    else:
-        # Тихое время через полночь (напр. 23:00-08:00)
-        return t >= quiet_start or t <= quiet_end
+    jobs_count = len(scheduler.get_jobs())
+    logger.info(f"Восстановление завершено. Всего jobs: {jobs_count}")
