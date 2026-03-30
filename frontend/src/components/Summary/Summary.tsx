@@ -77,25 +77,43 @@ export default function Summary() {
         <h1>📊 Итоги</h1>
       </div>
 
-      {/* Общая статистика */}
+      {/* Помодоро-статистика */}
       <div className="summary-overview">
         <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.blocks_planned}</span>
-          <span className="summary-stat-label">📋 Запланировано</span>
+          <span className="summary-stat-value">{stats.pomodoros_total}</span>
+          <span className="summary-stat-label">🍅 Помодоро</span>
         </div>
         <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.blocks_done}</span>
+          <span className="summary-stat-value">{stats.pomodoros_done}</span>
           <span className="summary-stat-label">✅ Выполнено</span>
         </div>
         <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.blocks_partial}</span>
+          <span className="summary-stat-value">{stats.pomodoros_partial}</span>
           <span className="summary-stat-label">⚡ Частично</span>
         </div>
         <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.blocks_failed}</span>
+          <span className="summary-stat-value">{stats.pomodoros_failed}</span>
           <span className="summary-stat-label">❌ Провалено</span>
         </div>
       </div>
+
+      {/* Задачи */}
+      {(stats.tasks_total > 0) && (
+        <div className="summary-overview" style={{ marginTop: 8 }}>
+          <div className="summary-stat card">
+            <span className="summary-stat-value">{stats.tasks_total}</span>
+            <span className="summary-stat-label">📋 Задач</span>
+          </div>
+          <div className="summary-stat card">
+            <span className="summary-stat-value">{stats.tasks_done}</span>
+            <span className="summary-stat-label">✅ Завершено</span>
+          </div>
+          <div className="summary-stat card">
+            <span className="summary-stat-value">{stats.tasks_in_progress}</span>
+            <span className="summary-stat-label">🔵 В работе</span>
+          </div>
+        </div>
+      )}
 
       {/* Время */}
       <div className="summary-time card" style={{ marginTop: 12 }}>

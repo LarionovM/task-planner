@@ -1,4 +1,4 @@
-// Настройки из шапки Web App — TZ, тихое время, начало/конец дня
+// Настройки — TZ, помодоро, начало/конец дня (v1.2.0)
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '../../store'
@@ -12,9 +12,6 @@ for (let h = 0; h < 24; h++) {
   }
 }
 
-// Часовые пояса — один на каждый уникальный offset+DST комбинацию
-// Города с разными правилами DST ОБЯЗАТЕЛЬНО в отдельных строках (иначе время будет неправильным)
-// hasDST помечает строки с переводом часов
 const TIMEZONE_DATA: { tz: string; cities: string; hasDST?: boolean }[] = [
   { tz: 'Pacific/Honolulu', cities: 'Гонолулу' },
   { tz: 'America/Anchorage', cities: 'Анкоридж', hasDST: true },
@@ -42,7 +39,6 @@ const TIMEZONE_DATA: { tz: string; cities: string; hasDST?: boolean }[] = [
   { tz: 'Pacific/Auckland', cities: 'Окленд, Веллингтон', hasDST: true },
 ]
 
-/** Получить UTC смещение для часового пояса */
 function getUtcOffset(tz: string): string {
   try {
     const now = new Date()
@@ -58,7 +54,6 @@ function getUtcOffset(tz: string): string {
   }
 }
 
-/** Получить числовое смещение для сортировки */
 function getOffsetMinutes(tz: string): number {
   try {
     const now = new Date()
@@ -70,14 +65,10 @@ function getOffsetMinutes(tz: string): number {
   }
 }
 
-/** Дружественное отображение для таймзоны */
 function formatTimezone(tz: string): string {
   const data = TIMEZONE_DATA.find((t) => t.tz === tz)
   const offset = getUtcOffset(tz)
-  if (data) {
-    return `${offset} (${data.cities})`
-  }
-  // Если нет в нашем списке — показываем IANA имя
+  if (data) return `${offset} (${data.cities})`
   const parts = tz.split('/')
   const city = parts[parts.length - 1].replace(/_/g, ' ')
   return `${offset} (${city})`
@@ -86,14 +77,16 @@ function formatTimezone(tz: string): string {
 export default function Settings() {
   const { user, loadUser, setScreen, setHasUnsavedChanges } = useStore()
   const [timezone, setTimezone] = useState('')
-  const [quietStart, setQuietStart] = useState('23:00')
-  const [quietEnd, setQuietEnd] = useState('08:00')
   const [dayStartTime, setDayStartTime] = useState('08:00')
   const [dayEndTime, setDayEndTime] = useState('23:50')
+  const [pomodoroWork, setPomodoroWork] = useState(25)
+  const [pomodoroShortBreak, setPomodoroShortBreak] = useState(5)
+  const [pomodoroLongBreak, setPomodoroLongBreak] = useState(30)
+  const [pomodoroCycles, setPomodoroCycles] = useState(4)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
-  const [initial, setInitial] = useState<Record<string, string> | null>(null)
+  const [initial, setInitial] = useState<Record<string, string | number> | null>(null)
 
   // Timezone picker state
   const [tzOpen, setTzOpen] = useState(false)
@@ -104,39 +97,42 @@ export default function Settings() {
   useEffect(() => {
     if (user) {
       setTimezone(user.timezone)
-      setQuietStart(user.quiet_start)
-      setQuietEnd(user.quiet_end)
       setDayStartTime(user.day_start_time || '08:00')
-      setDayEndTime(user.day_end_time)
+      setDayEndTime(user.day_end_time || '23:50')
+      setPomodoroWork(user.pomodoro_work_min || 25)
+      setPomodoroShortBreak(user.pomodoro_short_break_min || 5)
+      setPomodoroLongBreak(user.pomodoro_long_break_min || 30)
+      setPomodoroCycles(user.pomodoro_cycles_before_long || 4)
       setInitial({
         timezone: user.timezone,
-        quiet_start: user.quiet_start,
-        quiet_end: user.quiet_end,
         day_start_time: user.day_start_time || '08:00',
-        day_end_time: user.day_end_time,
+        day_end_time: user.day_end_time || '23:50',
+        pomodoro_work_min: user.pomodoro_work_min || 25,
+        pomodoro_short_break_min: user.pomodoro_short_break_min || 5,
+        pomodoro_long_break_min: user.pomodoro_long_break_min || 30,
+        pomodoro_cycles_before_long: user.pomodoro_cycles_before_long || 4,
       })
     }
   }, [user])
 
-  // Отслеживание изменений
   useEffect(() => {
     if (!initial) return
     const changed =
       timezone !== initial.timezone ||
-      quietStart !== initial.quiet_start ||
-      quietEnd !== initial.quiet_end ||
       dayStartTime !== initial.day_start_time ||
-      dayEndTime !== initial.day_end_time
+      dayEndTime !== initial.day_end_time ||
+      pomodoroWork !== initial.pomodoro_work_min ||
+      pomodoroShortBreak !== initial.pomodoro_short_break_min ||
+      pomodoroLongBreak !== initial.pomodoro_long_break_min ||
+      pomodoroCycles !== initial.pomodoro_cycles_before_long
     setHasChanges(changed)
     setHasUnsavedChanges(changed)
-  }, [timezone, quietStart, quietEnd, dayStartTime, dayEndTime, initial])
+  }, [timezone, dayStartTime, dayEndTime, pomodoroWork, pomodoroShortBreak, pomodoroLongBreak, pomodoroCycles, initial])
 
-  // Сброс флага при размонтировании
   useEffect(() => {
     return () => { setHasUnsavedChanges(false) }
   }, [])
 
-  // Закрытие dropdown при клике вне
   useEffect(() => {
     if (!tzOpen) return
     const handleClickOutside = (e: MouseEvent) => {
@@ -149,21 +145,15 @@ export default function Settings() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [tzOpen])
 
-  // Автофокус на поиск при открытии
   useEffect(() => {
-    if (tzOpen && searchRef.current) {
-      searchRef.current.focus()
-    }
+    if (tzOpen && searchRef.current) searchRef.current.focus()
   }, [tzOpen])
 
-  // Сортировка и фильтрация таймзон
   const detectedTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
 
-  // Найти tz из списка с таким же offset как у detected (для автовыбора)
   const detectedMatch = useMemo(() => {
     const exact = TIMEZONE_DATA.find((t) => t.tz === detectedTz)
     if (exact) return exact.tz
-    // Ищем по совпадению offset
     const detectedOffset = getOffsetMinutes(detectedTz)
     const match = TIMEZONE_DATA.find((t) => getOffsetMinutes(t.tz) === detectedOffset)
     return match?.tz || detectedTz
@@ -192,17 +182,20 @@ export default function Settings() {
     try {
       await api.updateSettings({
         timezone,
-        quiet_start: quietStart,
-        quiet_end: quietEnd,
         day_start_time: dayStartTime,
         day_end_time: dayEndTime,
+        pomodoro_work_min: pomodoroWork,
+        pomodoro_short_break_min: pomodoroShortBreak,
+        pomodoro_long_break_min: pomodoroLongBreak,
+        pomodoro_cycles_before_long: pomodoroCycles,
       })
       await loadUser()
       setHasChanges(false)
       setHasUnsavedChanges(false)
       setInitial({
-        timezone, quiet_start: quietStart, quiet_end: quietEnd,
-        day_start_time: dayStartTime, day_end_time: dayEndTime,
+        timezone, day_start_time: dayStartTime, day_end_time: dayEndTime,
+        pomodoro_work_min: pomodoroWork, pomodoro_short_break_min: pomodoroShortBreak,
+        pomodoro_long_break_min: pomodoroLongBreak, pomodoro_cycles_before_long: pomodoroCycles,
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -243,6 +236,61 @@ export default function Settings() {
         </button>
       </div>
 
+      {/* Помодоро */}
+      <div className="settings-section card">
+        <h3>🍅 Помодоро</h3>
+        <p className="hint" style={{ marginBottom: 8 }}>
+          Автоматические циклы фокусировки в течение рабочего дня
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label className="label">Работа (мин)</label>
+            <input
+              type="number"
+              className="input"
+              min={5} max={120} step={5}
+              value={pomodoroWork}
+              onChange={(e) => setPomodoroWork(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="label">Короткий перерыв (мин)</label>
+            <input
+              type="number"
+              className="input"
+              min={1} max={30} step={1}
+              value={pomodoroShortBreak}
+              onChange={(e) => setPomodoroShortBreak(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="label">Длинный перерыв (мин)</label>
+            <input
+              type="number"
+              className="input"
+              min={5} max={60} step={5}
+              value={pomodoroLongBreak}
+              onChange={(e) => setPomodoroLongBreak(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="label">Циклов до длинного</label>
+            <input
+              type="number"
+              className="input"
+              min={2} max={10} step={1}
+              value={pomodoroCycles}
+              onChange={(e) => setPomodoroCycles(Number(e.target.value))}
+            />
+          </div>
+        </div>
+        <p className="hint" style={{ marginTop: 8 }}>
+          Цикл: {pomodoroWork}мин работа → {pomodoroShortBreak}мин перерыв.
+          Каждый {pomodoroCycles}-й — длинный перерыв {pomodoroLongBreak}мин.
+        </p>
+      </div>
+
+      {/* Часовой пояс */}
       <div className="settings-section card">
         <h3>🌍 Часовой пояс</h3>
         <div className="tz-picker" ref={tzRef}>
@@ -268,7 +316,6 @@ export default function Settings() {
                 onChange={(e) => setTzSearch(e.target.value)}
               />
               <div className="tz-picker-list">
-                {/* Автоопределённый */}
                 {!tzSearch && (
                   <button
                     className={`tz-picker-item tz-picker-item-detected ${timezone === detectedMatch ? 'selected' : ''}`}
@@ -279,7 +326,6 @@ export default function Settings() {
                     </span>
                   </button>
                 )}
-
                 {filteredTimezones.map((t) => (
                   <button
                     key={t.tz}
@@ -291,11 +337,8 @@ export default function Settings() {
                     {t.hasDST && <span className="tz-picker-item-dst" title="Переводят часы">🔄</span>}
                   </button>
                 ))}
-
                 {filteredTimezones.length === 0 && (
-                  <div className="tz-picker-empty">
-                    Ничего не найдено
-                  </div>
+                  <div className="tz-picker-empty">Ничего не найдено</div>
                 )}
               </div>
             </div>
@@ -306,26 +349,23 @@ export default function Settings() {
         </p>
       </div>
 
+      {/* Начало/конец дня */}
       <div className="settings-section card">
         <h3>🕐 Начало и конец дня</h3>
         <p className="hint" style={{ marginBottom: 8 }}>
-          Определяет диапазон слотов в календаре
+          Определяет рабочие часы для помодоро-циклов и слотов в календаре
         </p>
         <div style={{ display: 'flex', gap: 12 }}>
           <div style={{ flex: 1 }}>
             <label className="label">Начало</label>
             <select className="input" value={dayStartTime} onChange={(e) => setDayStartTime(e.target.value)}>
-              {TIME_SLOTS.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
+              {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div style={{ flex: 1 }}>
             <label className="label">Конец</label>
             <select className="input" value={dayEndTime} onChange={(e) => setDayEndTime(e.target.value)}>
-              {TIME_SLOTS.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
+              {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
         </div>
@@ -334,31 +374,6 @@ export default function Settings() {
             ⚠️ Начало дня должно быть раньше конца
           </p>
         )}
-      </div>
-
-      <div className="settings-section card">
-        <h3>🔇 Тихое время</h3>
-        <p className="hint" style={{ marginBottom: 8 }}>
-          Бот не будет спамить в это время
-        </p>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <label className="label">С</label>
-            <select className="input" value={quietStart} onChange={(e) => setQuietStart(e.target.value)}>
-              {TIME_SLOTS.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ flex: 1 }}>
-            <label className="label">До</label>
-            <select className="input" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)}>
-              {TIME_SLOTS.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-        </div>
       </div>
 
       {saved && (

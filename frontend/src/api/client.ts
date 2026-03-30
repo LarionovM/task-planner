@@ -96,6 +96,22 @@ export const api = {
   deleteTask: (id: number) =>
     request<any>(`/tasks/${id}`, { method: 'DELETE' }),
 
+  // === Events ===
+  getEvents: (weekStart: string) =>
+    request<any[]>(`/events?week_start=${weekStart}`),
+  createEvent: (data: any) =>
+    request<any>('/events', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateEvent: (id: number, data: any) =>
+    request<any>(`/events/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteEvent: (id: number) =>
+    request<any>(`/events/${id}`, { method: 'DELETE' }),
+
   // === Blocks ===
   getBlocks: (weekStart: string) =>
     request<any[]>(`/blocks?week_start=${weekStart}`),

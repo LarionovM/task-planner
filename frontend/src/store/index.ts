@@ -7,6 +7,7 @@ import type {
   Category,
   Task,
   TaskBlock,
+  Event,
   WeeklyScheduleItem,
   WeeklyGoal,
   SpamConfig,
@@ -38,6 +39,10 @@ interface AppState {
   // Задачи
   tasks: Task[]
   loadTasks: () => Promise<void>
+
+  // События
+  events: Event[]
+  loadEvents: () => Promise<void>
 
   // Блоки
   blocks: TaskBlock[]
@@ -138,6 +143,16 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const tasks = await api.getTasks()
       set({ tasks })
+    } catch (e: any) {
+      set({ error: e.message })
+    }
+  },
+
+  events: [],
+  loadEvents: async () => {
+    try {
+      const events = await api.getEvents(get().weekStart)
+      set({ events })
     } catch (e: any) {
       set({ error: e.message })
     }
