@@ -1,6 +1,4 @@
-"""API маршруты для задач."""
-
-from datetime import time
+"""API маршруты для задач (v1.2.0)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,20 +27,30 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 async def get_tasks(
     category_id: int | None = Query(None),
     priority: str | None = Query(None),
+    status: str | None = Query(None),
     tag: str | None = Query(None),
     has_deadline: bool | None = Query(None),
+    scheduled_date: str | None = Query(None),  # YYYY-MM-DD
     sort_by: str = Query("created_at"),
     allowed: AllowedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """Список задач с фильтрами."""
+    from datetime import date as date_type
+
+    sched_date = None
+    if scheduled_date:
+        sched_date = date_type.fromisoformat(scheduled_date)
+
     tasks = await list_tasks(
         session,
         user_id=allowed.telegram_id,
         category_id=category_id,
         priority=priority,
+        status=status,
         tag=tag,
         has_deadline=has_deadline,
+        scheduled_date=sched_date,
         sort_by=sort_by,
     )
     return [TaskResponse.model_validate(t) for t in tasks]
@@ -68,15 +76,10 @@ async def post_task(
     session: AsyncSession = Depends(get_db),
 ):
     """Создать задачу."""
-    dump = data.model_dump()
-    # Конвертация preferred_time из строки в time
-    if dump.get("preferred_time"):
-        parts = dump["preferred_time"].split(":")
-        dump["preferred_time"] = time(int(parts[0]), int(parts[1]))
     task = await create_task(
         session,
         user_id=allowed.telegram_id,
-        **dump,
+        **data.model_dump(),
     )
     return TaskResponse.model_validate(task)
 
@@ -90,10 +93,6 @@ async def patch_task(
 ):
     """Обновить задачу."""
     kwargs = {k: v for k, v in data.model_dump().items() if v is not None}
-    # Конвертация preferred_time из строки в time
-    if "preferred_time" in kwargs and kwargs["preferred_time"]:
-        parts = kwargs["preferred_time"].split(":")
-        kwargs["preferred_time"] = time(int(parts[0]), int(parts[1]))
     task = await update_task(session, task_id, allowed.telegram_id, **kwargs)
     if task is None:
         raise HTTPException(status_code=404, detail="Задача не найдена")
@@ -106,7 +105,7 @@ async def delete_task_route(
     allowed: AllowedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Soft delete задачи. Возвращает затронутые блоки."""
+    """Soft delete задачи."""
     result = await soft_delete_task(session, task_id, allowed.telegram_id)
     if not result["deleted"]:
         raise HTTPException(status_code=404, detail="Задача не найдена")

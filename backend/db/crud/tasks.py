@@ -1,6 +1,7 @@
-"""CRUD операции для категорий и задач."""
+"""CRUD операции для категорий и задач (v1.2.0)."""
 
 import logging
+from datetime import date
 from typing import Any
 
 from sqlalchemy import select, update, delete, func, case, literal
@@ -34,7 +35,6 @@ async def create_category(
     color: str | None = None,
 ) -> Category:
     """Создать категорию."""
-    # Определяем sort_order — следующий по порядку
     result = await session.execute(
         select(func.max(Category.sort_order))
         .where(Category.user_id == user_id)
@@ -84,7 +84,6 @@ async def delete_category(
     user_id: int,
 ) -> dict[str, Any]:
     """Удалить категорию. Возвращает информацию о связанных задачах."""
-    # Проверяем есть ли задачи в этой категории
     task_count_result = await session.execute(
         select(func.count(Task.id)).where(
             Task.category_id == category_id,
@@ -160,8 +159,10 @@ async def list_tasks(
     user_id: int,
     category_id: int | None = None,
     priority: str | None = None,
+    status: str | None = None,
     tag: str | None = None,
     has_deadline: bool | None = None,
+    scheduled_date: date | None = None,
     sort_by: str = "created_at",
 ) -> list[Task]:
     """Список задач с фильтрами."""
@@ -176,14 +177,19 @@ async def list_tasks(
     if priority is not None:
         query = query.where(Task.priority == priority)
 
+    if status is not None:
+        query = query.where(Task.status == status)
+
     if has_deadline is True:
         query = query.where(Task.deadline.isnot(None))
     elif has_deadline is False:
         query = query.where(Task.deadline.is_(None))
 
+    if scheduled_date is not None:
+        query = query.where(Task.scheduled_date == scheduled_date)
+
     # Сортировка
     if sort_by == "priority":
-        # high > medium > low
         priority_order = case(
             (Task.priority == "high", literal(0)),
             (Task.priority == "medium", literal(1)),
@@ -195,6 +201,15 @@ async def list_tasks(
         query = query.order_by(Task.deadline.asc().nulls_last())
     elif sort_by == "name":
         query = query.order_by(Task.name)
+    elif sort_by == "status":
+        status_order = case(
+            (Task.status == "in_progress", literal(0)),
+            (Task.status == "grooming", literal(1)),
+            (Task.status == "blocked", literal(2)),
+            (Task.status == "done", literal(3)),
+            else_=literal(4),
+        )
+        query = query.order_by(status_order)
     else:
         query = query.order_by(Task.created_at.desc())
 
@@ -206,6 +221,38 @@ async def list_tasks(
         tasks = [t for t in tasks if tag in (t.tags or [])]
 
     return tasks
+
+
+async def get_tasks_for_today(
+    session: AsyncSession,
+    user_id: int,
+    today: date,
+) -> list[Task]:
+    """Задачи на сегодня (для опросника помодоро).
+
+    Возвращает задачи со статусом grooming или in_progress,
+    назначенные на сегодня, или повторяемые на сегодняшний день недели.
+    """
+    day_of_week = today.weekday()  # 0=Пн, 6=Вс
+
+    query = select(Task).where(
+        Task.user_id == user_id,
+        Task.is_deleted == False,
+        Task.status.in_(["grooming", "in_progress"]),
+    )
+
+    result = await session.execute(query)
+    all_tasks = list(result.scalars().all())
+
+    # Фильтруем: scheduled_date == today ИЛИ повторяемая на этот день недели
+    today_tasks = []
+    for t in all_tasks:
+        if t.scheduled_date == today:
+            today_tasks.append(t)
+        elif t.is_recurring and day_of_week in (t.recur_days or []):
+            today_tasks.append(t)
+
+    return today_tasks
 
 
 async def get_task(
@@ -256,15 +303,15 @@ async def soft_delete_task(
     if task is None:
         return {"deleted": False, "affected_blocks": []}
 
-    # Ищем блоки где эта задача используется
+    # Ищем помодоро-сессии привязанные к этой задаче
     result = await session.execute(
         select(TaskBlock).where(
             TaskBlock.user_id == user_id,
+            TaskBlock.task_id == task_id,
             TaskBlock.status.in_(["planned", "active"]),
         )
     )
-    all_blocks = list(result.scalars().all())
-    affected = [b for b in all_blocks if task_id in (b.task_ids or [])]
+    affected = list(result.scalars().all())
 
     task.is_deleted = True
     await session.flush()
@@ -272,7 +319,7 @@ async def soft_delete_task(
     return {
         "deleted": True,
         "affected_blocks": [
-            {"id": b.id, "block_name": b.block_name, "day": str(b.day)}
+            {"id": b.id, "day": str(b.day)}
             for b in affected
         ],
     }

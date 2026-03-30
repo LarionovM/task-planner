@@ -1,4 +1,4 @@
-"""API маршруты для пользователей и настроек."""
+"""API маршруты для пользователей и настроек (v1.2.0)."""
 
 from datetime import time
 
@@ -47,10 +47,14 @@ async def get_me(
     return UserResponse(
         telegram_id=user.telegram_id,
         timezone=user.timezone,
-        quiet_start=_time_to_str(user.quiet_start),
-        quiet_end=_time_to_str(user.quiet_end),
         day_start_time=_time_to_str(user.day_start_time) if user.day_start_time else "08:00",
         day_end_time=_time_to_str(user.day_end_time),
+        pomodoro_work_min=user.pomodoro_work_min if hasattr(user, 'pomodoro_work_min') and user.pomodoro_work_min else 25,
+        pomodoro_short_break_min=user.pomodoro_short_break_min if hasattr(user, 'pomodoro_short_break_min') and user.pomodoro_short_break_min else 5,
+        pomodoro_long_break_min=user.pomodoro_long_break_min if hasattr(user, 'pomodoro_long_break_min') and user.pomodoro_long_break_min else 30,
+        pomodoro_cycles_before_long=user.pomodoro_cycles_before_long if hasattr(user, 'pomodoro_cycles_before_long') and user.pomodoro_cycles_before_long else 4,
+        reminders_paused_until=user.reminders_paused_until if hasattr(user, 'reminders_paused_until') else None,
+        reminders_stopped=user.reminders_stopped if hasattr(user, 'reminders_stopped') else False,
         is_admin=allowed.is_admin,
         is_active=allowed.is_active,
         created_at=user.created_at,
@@ -67,23 +71,31 @@ async def patch_settings(
     kwargs = {}
     if data.timezone is not None:
         kwargs["timezone"] = data.timezone
-    if data.quiet_start is not None:
-        kwargs["quiet_start"] = _str_to_time(data.quiet_start)
-    if data.quiet_end is not None:
-        kwargs["quiet_end"] = _str_to_time(data.quiet_end)
     if data.day_start_time is not None:
         kwargs["day_start_time"] = _str_to_time(data.day_start_time)
     if data.day_end_time is not None:
         kwargs["day_end_time"] = _str_to_time(data.day_end_time)
+    if data.pomodoro_work_min is not None:
+        kwargs["pomodoro_work_min"] = data.pomodoro_work_min
+    if data.pomodoro_short_break_min is not None:
+        kwargs["pomodoro_short_break_min"] = data.pomodoro_short_break_min
+    if data.pomodoro_long_break_min is not None:
+        kwargs["pomodoro_long_break_min"] = data.pomodoro_long_break_min
+    if data.pomodoro_cycles_before_long is not None:
+        kwargs["pomodoro_cycles_before_long"] = data.pomodoro_cycles_before_long
 
     user = await update_user_settings(session, allowed.telegram_id, **kwargs)
     return UserResponse(
         telegram_id=user.telegram_id,
         timezone=user.timezone,
-        quiet_start=_time_to_str(user.quiet_start),
-        quiet_end=_time_to_str(user.quiet_end),
         day_start_time=_time_to_str(user.day_start_time) if user.day_start_time else "08:00",
         day_end_time=_time_to_str(user.day_end_time),
+        pomodoro_work_min=user.pomodoro_work_min if hasattr(user, 'pomodoro_work_min') and user.pomodoro_work_min else 25,
+        pomodoro_short_break_min=user.pomodoro_short_break_min if hasattr(user, 'pomodoro_short_break_min') and user.pomodoro_short_break_min else 5,
+        pomodoro_long_break_min=user.pomodoro_long_break_min if hasattr(user, 'pomodoro_long_break_min') and user.pomodoro_long_break_min else 30,
+        pomodoro_cycles_before_long=user.pomodoro_cycles_before_long if hasattr(user, 'pomodoro_cycles_before_long') and user.pomodoro_cycles_before_long else 4,
+        reminders_paused_until=user.reminders_paused_until if hasattr(user, 'reminders_paused_until') else None,
+        reminders_stopped=user.reminders_stopped if hasattr(user, 'reminders_stopped') else False,
         is_admin=allowed.is_admin,
         is_active=allowed.is_active,
         created_at=user.created_at,

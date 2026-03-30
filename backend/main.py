@@ -11,7 +11,7 @@ from aiogram.types import Update
 from backend.config import settings
 from backend.db.database import init_db, async_session
 from backend.db.crud.users import ensure_admin_exists
-from backend.api.routes import users, categories, tasks, blocks, schedule, goals, stats
+from backend.api.routes import users, categories, tasks, blocks, events, schedule, goals, stats
 from backend.bot import create_bot, create_dispatcher, set_bot_commands
 from backend.bot.scheduler import init_scheduler, restore_jobs_on_startup, scheduler
 
@@ -92,7 +92,7 @@ async def _start_polling():
 
 app = FastAPI(
     title="Task Planner Bot API",
-    version="0.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -113,6 +113,7 @@ app.include_router(users.router)
 app.include_router(categories.router)
 app.include_router(tasks.router)
 app.include_router(blocks.router)
+app.include_router(events.router)
 app.include_router(schedule.router)
 app.include_router(goals.router)
 app.include_router(stats.router)
