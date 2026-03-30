@@ -1,4 +1,4 @@
-// Экран 4: Бэклог задач — CRUD + фильтры + эпики
+// Экран 4: Бэклог задач — CRUD + фильтры + эпики (v1.2.0)
 
 import { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../../store'
@@ -14,6 +14,19 @@ const PRIORITY_EMOJI: Record<string, string> = {
 }
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+const STATUS_EMOJI: Record<string, string> = {
+  grooming: '🔘',
+  in_progress: '🔵',
+  blocked: '🔴',
+  done: '✅',
+}
+const STATUS_LABELS: Record<string, string> = {
+  grooming: 'Grooming',
+  in_progress: 'В работе',
+  blocked: 'Заблокировано',
+  done: 'Готово',
+}
 
 type SortField = 'priority' | 'deadline' | 'category' | 'name' | 'time' | 'created'
 type SortDir = 'asc' | 'desc'
@@ -31,6 +44,7 @@ export default function Backlog() {
   const { tasks, categories, loadTasks, loadCategories, weekStart } = useStore()
   const [filterCat, setFilterCat] = useState<number | ''>('')
   const [filterPriority, setFilterPriority] = useState<string>('')
+  const [filterStatus, setFilterStatus] = useState<string>('')
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
@@ -46,20 +60,17 @@ export default function Backlog() {
   const [formName, setFormName] = useState('')
   const [formCatId, setFormCatId] = useState<number>(0)
   const [formPriority, setFormPriority] = useState<'high' | 'medium' | 'low'>('medium')
+  const [formStatus, setFormStatus] = useState<'grooming' | 'in_progress' | 'blocked' | 'done'>('grooming')
+  const [formDescription, setFormDescription] = useState('')
+  const [formLink, setFormLink] = useState('')
+  const [formScheduledDate, setFormScheduledDate] = useState('')
   const [formHasDeadline, setFormHasDeadline] = useState(false)
   const [formDeadline, setFormDeadline] = useState('')
   const [formEstTime, setFormEstTime] = useState<string>('')
-  const [formMinTime, setFormMinTime] = useState<string>('1')
-  const [formReminderBefore, setFormReminderBefore] = useState<number>(5)
-  const [formPomodoro, setFormPomodoro] = useState(false)
-  const [formGrouping, setFormGrouping] = useState(true)
   const [formSpam, setFormSpam] = useState(true)
   const [formRecurring, setFormRecurring] = useState(false)
   const [formRecurDays, setFormRecurDays] = useState<number[]>([])
-  const [formPreferredTime, setFormPreferredTime] = useState<string>('')
   const [formDependsOn, setFormDependsOn] = useState<number | ''>('')
-  const [formMultiPerBlock, setFormMultiPerBlock] = useState(false)
-  const [formDeviceType, setFormDeviceType] = useState<'desktop' | 'mobile' | 'other'>('other')
   const [formIsEpic, setFormIsEpic] = useState(false)
   const [formEpicId, setFormEpicId] = useState<number | ''>('')
   const [formEpicEmoji, setFormEpicEmoji] = useState('')
@@ -129,12 +140,13 @@ export default function Backlog() {
     let list = [...tasks]
     if (filterCat) list = list.filter((t) => t.category_id === filterCat)
     if (filterPriority) list = list.filter((t) => t.priority === filterPriority)
+    if (filterStatus) list = list.filter((t) => t.status === filterStatus)
     if (search) {
       const q = search.toLowerCase()
       list = list.filter((t) => t.name.toLowerCase().includes(q))
     }
     return list
-  }, [tasks, filterCat, filterPriority, search])
+  }, [tasks, filterCat, filterPriority, filterStatus, search])
 
   // Разделение на регулярные и разовые
   const recurringTasks = useMemo(() => filtered.filter((t) => !t.is_epic && t.is_recurring), [filtered])
@@ -176,20 +188,17 @@ export default function Backlog() {
     setFormName('')
     setFormCatId(categories[0]?.id || 0)
     setFormPriority('medium')
+    setFormStatus('grooming')
+    setFormDescription('')
+    setFormLink('')
+    setFormScheduledDate('')
     setFormHasDeadline(false)
     setFormDeadline('')
     setFormEstTime('')
-    setFormMinTime('1')
-    setFormReminderBefore(5)
-    setFormPomodoro(false)
-    setFormGrouping(true)
     setFormSpam(true)
     setFormRecurring(false)
     setFormRecurDays([])
-    setFormPreferredTime('')
     setFormDependsOn('')
-    setFormMultiPerBlock(false)
-    setFormDeviceType('other')
     setFormIsEpic(isEpic)
     setFormEpicId('')
     setFormEpicEmoji('')
@@ -201,20 +210,17 @@ export default function Backlog() {
     setFormName(task.name)
     setFormCatId(task.category_id)
     setFormPriority(task.priority)
+    setFormStatus(task.status || 'grooming')
+    setFormDescription(task.description || '')
+    setFormLink(task.link || '')
+    setFormScheduledDate(task.scheduled_date || '')
     setFormHasDeadline(!!task.deadline)
     setFormDeadline(task.deadline || '')
     setFormEstTime(task.estimated_time_min?.toString() || '')
-    setFormMinTime(task.minimal_time_min?.toString() || '1')
-    setFormReminderBefore(task.reminder_before_min)
-    setFormPomodoro(task.use_pomodoro)
-    setFormGrouping(task.allow_grouping)
     setFormSpam(task.spam_enabled)
     setFormRecurring(task.is_recurring)
     setFormRecurDays(task.recur_days || [])
-    setFormPreferredTime(task.preferred_time || '')
     setFormDependsOn(task.depends_on?.[0] || '')
-    setFormMultiPerBlock(task.allow_multi_per_block || false)
-    setFormDeviceType(task.device_type || 'other')
     setFormIsEpic(task.is_epic || false)
     setFormEpicId(task.epic_id || '')
     setFormEpicEmoji(task.epic_emoji || '')
@@ -229,20 +235,17 @@ export default function Backlog() {
         name: formName.trim(),
         category_id: formCatId,
         priority: formPriority,
+        status: formStatus,
+        description: formDescription.trim() || null,
+        link: formLink.trim() || null,
+        scheduled_date: formScheduledDate || null,
         deadline: formHasDeadline && formDeadline ? formDeadline : null,
         estimated_time_min: formEstTime ? parseInt(formEstTime) : null,
-        minimal_time_min: formMinTime ? parseInt(formMinTime) : 1,
-        reminder_before_min: formReminderBefore,
-        use_pomodoro: formPomodoro,
-        allow_grouping: formGrouping,
         spam_enabled: formSpam,
         is_recurring: formRecurring,
         recur_days: formRecurDays,
-        preferred_time: formRecurring && formPreferredTime ? formPreferredTime : null,
         tags: [],
         depends_on: formDependsOn ? [formDependsOn] : [],
-        allow_multi_per_block: formMultiPerBlock,
-        device_type: formDeviceType,
         is_epic: formIsEpic,
         epic_id: formIsEpic ? null : (formEpicId || null),
         epic_emoji: formIsEpic ? (formEpicEmoji || null) : null,
@@ -350,14 +353,36 @@ export default function Backlog() {
       <div key={task.id} className={`backlog-item card ${indent ? 'backlog-item-indent' : ''}`} onClick={() => handleEdit(task)}>
         <div className="backlog-item-header">
           <span className="backlog-priority">{PRIORITY_EMOJI[task.priority]}</span>
+          <span className="backlog-task-status" title={STATUS_LABELS[task.status] || task.status}>{STATUS_EMOJI[task.status] || '🔘'}</span>
           <span className="backlog-task-name">{task.name}</span>
           <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setDeleteTask(task) }}>🗑</button>
         </div>
+        {(task.description || task.link) && (
+          <div className="backlog-item-extra">
+            {task.description && (
+              <span className="backlog-description" title={task.description}>
+                {task.description.length > 80 ? task.description.slice(0, 80) + '...' : task.description}
+              </span>
+            )}
+            {task.link && (
+              <a
+                className="backlog-link"
+                href={task.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={task.link}
+              >
+                🔗 {task.link.length > 40 ? task.link.slice(0, 40) + '...' : task.link}
+              </a>
+            )}
+          </div>
+        )}
         <div className="backlog-item-meta">
           {cat && <span className="backlog-cat">{cat.emoji || '📁'} {cat.name}</span>}
           {task.estimated_time_min && <span className="backlog-time">⏱ {task.estimated_time_min} мин</span>}
           {task.deadline && <span className="backlog-deadline">📅 {task.deadline}</span>}
-          {task.use_pomodoro && <span className="backlog-badge">🍅</span>}
+          {task.scheduled_date && <span className="backlog-scheduled">🗓 {task.scheduled_date}</span>}
           {task.is_recurring && <span className="backlog-badge">🔁</span>}
         </div>
       </div>
@@ -387,6 +412,25 @@ export default function Backlog() {
             <option value="medium">🟡 Средний</option>
             <option value="low">🟢 Низкий</option>
           </select>
+        </div>
+        {/* Фильтр по статусу */}
+        <div className="backlog-status-filter">
+          <button
+            className={`backlog-status-btn${filterStatus === '' ? ' active' : ''}`}
+            onClick={() => setFilterStatus('')}
+          >
+            Все
+          </button>
+          {(Object.keys(STATUS_EMOJI) as Array<keyof typeof STATUS_EMOJI>).map((st) => (
+            <button
+              key={st}
+              className={`backlog-status-btn${filterStatus === st ? ' active' : ''}`}
+              onClick={() => setFilterStatus(filterStatus === st ? '' : st)}
+              title={STATUS_LABELS[st]}
+            >
+              {STATUS_EMOJI[st]} {STATUS_LABELS[st]}
+            </button>
+          ))}
         </div>
         {/* Сортировка + переключатель вида */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -432,6 +476,7 @@ export default function Backlog() {
             <thead>
               <tr>
                 <th style={{ width: 28 }}></th>
+                <th style={{ width: 28 }}></th>
                 <th>Название</th>
                 <th style={{ width: 70 }}>Группа</th>
                 <th style={{ width: 80 }}>Категория</th>
@@ -447,11 +492,10 @@ export default function Backlog() {
                 return (
                   <tr key={task.id} className="backlog-table-row" onClick={() => handleEdit(task)}>
                     <td className="backlog-table-priority">{PRIORITY_EMOJI[task.priority]}</td>
+                    <td className="backlog-table-status" title={STATUS_LABELS[task.status] || task.status}>{STATUS_EMOJI[task.status] || '🔘'}</td>
                     <td className="backlog-table-name">
                       {task.name}
                       {task.is_recurring && <span className="backlog-badge-sm">🔁</span>}
-                      {task.use_pomodoro && <span className="backlog-badge-sm">🍅</span>}
-                      {task.allow_multi_per_block && <span className="backlog-badge-sm">🔄</span>}
                     </td>
                     <td className="backlog-table-epic">{epic ? `${epic.epic_emoji || '📦'} ${epic.name}` : '—'}</td>
                     <td className="backlog-table-cat">{cat?.emoji || '📁'} {cat?.name || ''}</td>
@@ -524,16 +568,61 @@ export default function Backlog() {
 
               {!formIsEpic && (
                 <>
-                  <div className="backlog-form-row">
-                    <div className="backlog-form-col">
-                      <label className="label">Мин. время (мин)</label>
-                      <input className="input" type="number" min={1} value={formMinTime} onChange={(e) => setFormMinTime(e.target.value)} onBlur={() => { if (!formMinTime || parseInt(formMinTime) < 1) setFormMinTime('1') }} />
-                    </div>
-                    <div className="backlog-form-col">
-                      <label className="label">Примерно (мин)</label>
-                      <input className="input" type="number" min={1} value={formEstTime} onChange={(e) => setFormEstTime(e.target.value)} placeholder="—" />
-                    </div>
+                  <label className="label">Статус</label>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {(Object.keys(STATUS_EMOJI) as Array<keyof typeof STATUS_EMOJI>).map((st) => (
+                      <button
+                        key={st}
+                        className={`btn btn-sm ${formStatus === st ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setFormStatus(st as typeof formStatus)}
+                        type="button"
+                      >
+                        {STATUS_EMOJI[st]} {STATUS_LABELS[st]}
+                      </button>
+                    ))}
                   </div>
+
+                  <label className="label" style={{ marginTop: 12 }}>Описание</label>
+                  <textarea
+                    className="input"
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    placeholder="Подробности задачи (опционально)"
+                    rows={3}
+                    style={{ resize: 'vertical' }}
+                  />
+
+                  <label className="label">Ссылка</label>
+                  <input
+                    className="input"
+                    type="url"
+                    value={formLink}
+                    onChange={(e) => setFormLink(e.target.value)}
+                    placeholder="https://..."
+                  />
+
+                  <label className="label">Примерное время (мин)</label>
+                  <input className="input" type="number" min={1} value={formEstTime} onChange={(e) => setFormEstTime(e.target.value)} placeholder="—" style={{ maxWidth: 140 }} />
+
+                  <label className="label" style={{ marginTop: 12 }}>Запланировать на дату</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={formScheduledDate}
+                    onChange={(e) => setFormScheduledDate(e.target.value)}
+                    style={{ maxWidth: 180 }}
+                  />
+                  {formScheduledDate && (
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ marginLeft: 8, fontSize: 11 }}
+                      onClick={() => setFormScheduledDate('')}
+                      type="button"
+                    >
+                      Сбросить
+                    </button>
+                  )}
+                  <span className="hint">На какой день запланирована задача</span>
 
                   <label className="schedule-toggle" style={{ marginTop: 12 }}>
                     <input type="checkbox" checked={formHasDeadline} onChange={(e) => setFormHasDeadline(e.target.checked)} />
@@ -589,47 +678,11 @@ export default function Backlog() {
                     </div>
                   )}
 
-                  <label className="label" style={{ marginTop: 12 }}>Напомнить за (мин)</label>
-                  <input className="input" type="number" min={0} value={formReminderBefore} onChange={(e) => setFormReminderBefore(parseInt(e.target.value) || 0)} style={{ maxWidth: 120 }} />
-
                   <label className="label">Зависит от задачи</label>
                   <select className="input" value={formDependsOn} onChange={(e) => setFormDependsOn(e.target.value ? parseInt(e.target.value) : '')}>
                     <option value="">Нет зависимости</option>
                     {tasks.filter((t) => t.id !== editTask?.id && !t.is_epic).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
-
-                  <div className="backlog-form-checks">
-                    <label className="schedule-toggle">
-                      <input type="checkbox" checked={formPomodoro} onChange={(e) => setFormPomodoro(e.target.checked)} />
-                      <span className="schedule-toggle-label">🍅 Pomodoro</span>
-                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Разбивает задачу на интервалы: 25 мин фокуса + 5 мин перерыв. Бот напомнит о каждом переключении.</span></span>
-                    </label>
-                    <label className="schedule-toggle">
-                      <input type="checkbox" checked={formGrouping} onChange={(e) => setFormGrouping(e.target.checked)} />
-                      <span className="schedule-toggle-label">📦 Группировка</span>
-                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Разрешить объединять эту задачу с другими в один блок в календаре. Удобно для мелких задач.</span></span>
-                    </label>
-                    <label className="schedule-toggle">
-                      <input type="checkbox" checked={formMultiPerBlock} onChange={(e) => setFormMultiPerBlock(e.target.checked)} />
-                      <span className="schedule-toggle-label">🔄 Мульти-задача</span>
-                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Несколько экземпляров задачи в одном блоке. Например, 5 уроков подряд или 3 подхода.</span></span>
-                    </label>
-                  </div>
-
-                  <label className="label" style={{ marginTop: 12 }}>Тип устройства</label>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {([['desktop', '💻 Компьютер'], ['mobile', '📱 Телефон'], ['other', '🔧 Другое']] as const).map(([val, label]) => (
-                      <button
-                        key={val}
-                        className={`btn btn-sm ${formDeviceType === val ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setFormDeviceType(val)}
-                        type="button"
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="hint">Задачи группируются только с одинаковым типом устройства</span>
 
                   <div className="backlog-form-checks" style={{ marginTop: 12 }}>
                     <label className="schedule-toggle">
@@ -668,32 +721,6 @@ export default function Backlog() {
                         {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((name, i) => (
                           <button key={i} className={`btn btn-sm ${formRecurDays.includes(i) ? 'btn-primary' : 'btn-secondary'}`} onClick={() => toggleRecurDay(i)}>{name}</button>
                         ))}
-                      </div>
-                      <div className="backlog-preferred-time">
-                        <label className="label" style={{ fontSize: 12, marginTop: 8, marginBottom: 4 }}>
-                          ⏰ Предпочтительное время (для автораспределения)
-                        </label>
-                        <input
-                          className="input"
-                          type="time"
-                          value={formPreferredTime}
-                          onChange={(e) => setFormPreferredTime(e.target.value)}
-                          step={1800}
-                          style={{ maxWidth: 140 }}
-                          placeholder="Не задано"
-                        />
-                        {formPreferredTime && (
-                          <button
-                            className="btn btn-sm btn-secondary"
-                            style={{ marginLeft: 8, fontSize: 11 }}
-                            onClick={() => setFormPreferredTime('')}
-                          >
-                            Сбросить
-                          </button>
-                        )}
-                        <p className="hint" style={{ marginTop: 4, fontSize: 11 }}>
-                          Автораспределение поставит задачу на это время, если слот свободен
-                        </p>
                       </div>
                     </div>
                   )}
