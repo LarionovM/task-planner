@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { api } from '../../api/client'
 import type { WeeklyScheduleItem, SpamConfig } from '../../types'
+import ThemeToggle from '../ThemeToggle'
 import './WeekSchedule.css'
 
 const DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
@@ -82,13 +83,16 @@ export default function WeekSchedule() {
           <button className="btn-icon" onClick={() => setScreen('settings')}>←</button>
           <h1>📅 Расписание</h1>
         </div>
-        {hasChanges ? (
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-            {saving ? '...' : '💾 Сохранить'}
-          </button>
-        ) : saved ? (
-          <span style={{ color: 'var(--success)', fontSize: 13 }}>✅ Сохранено</span>
-        ) : null}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {hasChanges ? (
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+              {saving ? '...' : '💾 Сохранить'}
+            </button>
+          ) : saved ? (
+            <span style={{ color: 'var(--success)', fontSize: 13 }}>✅ Сохранено</span>
+          ) : null}
+          <ThemeToggle />
+        </div>
       </div>
 
       <p className="hint" style={{ marginBottom: 16 }}>

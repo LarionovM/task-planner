@@ -28,6 +28,7 @@ import type { Task, Event, Category } from '../../types'
 import DayColumn from './DayColumn'
 import BacklogPanel from './BacklogPanel'
 import EventForm from './EventForm'
+import ThemeToggle from '../ThemeToggle'
 import './Calendar.css'
 
 const DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -289,6 +290,7 @@ export default function Calendar() {
           <button className="btn btn-secondary btn-sm" onClick={() => setShowBacklog(!showBacklog)} title="Панель задач для перетаскивания">
             {showBacklog ? '✕' : '📋'}
           </button>
+          <ThemeToggle />
         </div>
       </div>
 

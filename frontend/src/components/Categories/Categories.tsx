@@ -20,6 +20,7 @@ import { useStore } from '../../store'
 import { api } from '../../api/client'
 import type { Category } from '../../types'
 import EmojiPicker from '../EmojiPicker'
+import ThemeToggle from '../ThemeToggle'
 import './Categories.css'
 
 function SortableCategory({
@@ -111,7 +112,10 @@ export default function Categories() {
           <button className="btn-icon" onClick={() => setScreen('settings')}>←</button>
           <h1>📁 Категории</h1>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={handleAdd}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button className="btn btn-primary btn-sm" onClick={handleAdd}>+ Добавить</button>
+          <ThemeToggle />
+        </div>
       </div>
 
       <p className="hint" style={{ marginBottom: 12 }}>Перетащите для изменения порядка</p>

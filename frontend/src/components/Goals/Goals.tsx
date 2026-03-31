@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { api } from '../../api/client'
 import type { WeeklyGoal } from '../../types'
+import ThemeToggle from '../ThemeToggle'
 import './Goals.css'
 
 export default function Goals() {
@@ -68,13 +69,16 @@ export default function Goals() {
           <button className="btn-icon" onClick={() => setScreen('settings')}>←</button>
           <h1>🎯 Цели</h1>
         </div>
-        {hasChanges ? (
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-            {saving ? '...' : '💾 Сохранить'}
-          </button>
-        ) : saved ? (
-          <span style={{ color: 'var(--success)', fontSize: 13 }}>✅ Сохранено</span>
-        ) : null}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {hasChanges ? (
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+              {saving ? '...' : '💾 Сохранить'}
+            </button>
+          ) : saved ? (
+            <span style={{ color: 'var(--success)', fontSize: 13 }}>✅ Сохранено</span>
+          ) : null}
+          <ThemeToggle />
+        </div>
       </div>
 
       <p className="hint" style={{ marginBottom: 16 }}>Сколько часов в неделю хотите уделять каждой категории</p>

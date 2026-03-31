@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '../../store'
 import { api } from '../../api/client'
+import ThemeToggle from '../ThemeToggle'
 import './Settings.css'
 
 const TIME_SLOTS: string[] = []
@@ -214,13 +215,16 @@ export default function Settings() {
     <div className="settings-screen">
       <div className="header">
         <h1>⚙️ Настройки</h1>
-        {hasChanges ? (
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-            {saving ? '...' : '💾 Сохранить'}
-          </button>
-        ) : saved ? (
-          <span style={{ color: 'var(--success)', fontSize: 13 }}>✅ Сохранено</span>
-        ) : null}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {hasChanges ? (
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+              {saving ? '...' : '💾 Сохранить'}
+            </button>
+          ) : saved ? (
+            <span style={{ color: 'var(--success)', fontSize: 13 }}>✅ Сохранено</span>
+          ) : null}
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* Быстрый доступ к экранам настройки */}

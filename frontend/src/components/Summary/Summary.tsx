@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { api } from '../../api/client'
 import type { WeekStats } from '../../types'
+import ThemeToggle from '../ThemeToggle'
 import './Summary.css'
 
 export default function Summary() {
@@ -75,6 +76,7 @@ export default function Summary() {
     <div className="summary-screen">
       <div className="header">
         <h1>📊 Итоги</h1>
+        <ThemeToggle />
       </div>
 
       {/* Помодоро-статистика */}

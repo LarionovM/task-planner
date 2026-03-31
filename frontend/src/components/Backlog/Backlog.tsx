@@ -5,6 +5,7 @@ import { useStore } from '../../store'
 import { api } from '../../api/client'
 import type { Task, Category } from '../../types'
 import EmojiPicker from '../EmojiPicker'
+import ThemeToggle from '../ThemeToggle'
 import './Backlog.css'
 
 const PRIORITY_EMOJI: Record<string, string> = {
@@ -422,9 +423,10 @@ export default function Backlog() {
     <div className="backlog-screen">
       <div className="header">
         <h1>📋 Задачи</h1>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <button className="btn btn-secondary btn-sm" onClick={() => handleAdd(true)}>📦 Группа</button>
           <button className="btn btn-primary btn-sm" onClick={() => handleAdd(false)}>+ Задача</button>
+          <ThemeToggle />
         </div>
       </div>
 

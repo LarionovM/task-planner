@@ -15,6 +15,10 @@ import type {
 import { api } from '../api/client'
 
 interface AppState {
+  // Тема
+  theme: 'dark' | 'light'
+  toggleTheme: () => void
+
   // Навигация
   screen: Screen
   setScreen: (s: Screen) => void
@@ -85,6 +89,14 @@ function getMonday(): string {
 }
 
 export const useStore = create<AppState>((set, get) => ({
+  theme: (localStorage.getItem('theme') as 'dark' | 'light') || 'dark',
+  toggleTheme: () => {
+    const next = get().theme === 'dark' ? 'light' : 'dark'
+    set({ theme: next })
+    document.documentElement.setAttribute('data-theme', next)
+    localStorage.setItem('theme', next)
+  },
+
   screen: 'calendar',
   setScreen: (s) => {
     const state = get()
