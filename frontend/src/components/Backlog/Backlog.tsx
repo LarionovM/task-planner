@@ -277,6 +277,13 @@ export default function Backlog() {
     if (!deleteTask) return
     setSaving(true)
     try {
+      // Если удаляем эпик — удалить все его задачи тоже
+      if (deleteTask.is_epic) {
+        const epicTasks = tasks.filter((t) => t.epic_id === deleteTask.id)
+        for (const t of epicTasks) {
+          await api.deleteTask(t.id)
+        }
+      }
       await api.deleteTask(deleteTask.id)
       await loadTasks()
       setDeleteTask(null)
@@ -347,13 +354,35 @@ export default function Backlog() {
     )
   }
 
+  const NEXT_STATUS: Record<string, string> = {
+    grooming: 'in_progress',
+    in_progress: 'done',
+    blocked: 'in_progress',
+    done: 'grooming',
+  }
+
+  const handleQuickStatusChange = async (e: React.MouseEvent, task: Task) => {
+    e.stopPropagation()
+    const nextStatus = NEXT_STATUS[task.status] || 'grooming'
+    try {
+      await api.updateTask(task.id, { status: nextStatus })
+      await loadTasks()
+    } catch {}
+  }
+
   const renderTaskCard = (task: Task, indent = false) => {
     const cat = catMap[task.category_id]
     return (
       <div key={task.id} className={`backlog-item card ${indent ? 'backlog-item-indent' : ''}`} onClick={() => handleEdit(task)}>
         <div className="backlog-item-header">
           <span className="backlog-priority">{PRIORITY_EMOJI[task.priority]}</span>
-          <span className="backlog-task-status" title={STATUS_LABELS[task.status] || task.status}>{STATUS_EMOJI[task.status] || '🔘'}</span>
+          <button
+            className="backlog-status-quick-btn"
+            onClick={(e) => handleQuickStatusChange(e, task)}
+            title={`${STATUS_LABELS[task.status]} — нажмите для смены`}
+          >
+            {STATUS_EMOJI[task.status] || '🔘'}
+          </button>
           <span className="backlog-task-name">{task.name}</span>
           <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setDeleteTask(task) }}>🗑</button>
         </div>
@@ -741,7 +770,12 @@ export default function Backlog() {
             <h3>Удалить {deleteTask.is_epic ? 'группу' : 'задачу'}?</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
               «{deleteTask.name}» будет удален{deleteTask.is_epic ? 'а' : 'а'}.
-              {deleteTask.is_epic && ' Задачи из группы станут самостоятельными.'}
+              {deleteTask.is_epic && (() => {
+                const count = tasks.filter((t) => t.epic_id === deleteTask.id).length
+                return count > 0
+                  ? ` Вместе с группой будут удалены ${count} задач${count === 1 ? 'а' : count < 5 ? 'и' : ''}.`
+                  : ' В группе нет задач.'
+              })()}
             </p>
             <div className="dialog-actions">
               <button className="btn btn-secondary" onClick={() => setDeleteTask(null)}>Отмена</button>

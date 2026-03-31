@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from './store'
 import BottomNav from './components/Navigation/BottomNav'
 import TimezoneSelect from './components/TimezoneSelect/TimezoneSelect'
@@ -12,6 +12,23 @@ import Settings from './components/Settings/Settings'
 
 function App() {
   const { screen, user, loading, error, loadUser, loadCategories, loadSchedule, loadGoals, pendingScreen, confirmNavigation, cancelNavigation } = useStore()
+
+  // Тема
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark'
+  })
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    document.documentElement.setAttribute('data-theme', next)
+    localStorage.setItem('theme', next)
+  }
+
+  // Инициализация темы из localStorage
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [])
 
   // Загрузка начальных данных
   useEffect(() => {
@@ -92,6 +109,16 @@ function App() {
 
   return (
     <div className="app">
+      {/* Кнопка смены темы — всегда видна */}
+      {showNav && (
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
+      )}
       {renderScreen()}
       {showNav && <BottomNav />}
 

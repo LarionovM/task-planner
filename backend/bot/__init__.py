@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from backend.config import settings as app_settings
 from backend.bot.middlewares import WhitelistMiddleware
@@ -54,4 +54,21 @@ async def set_bot_commands(bot: Bot) -> None:
         BotCommand(command="stats", description="Статистика за неделю"),
     ]
     await bot.set_my_commands(commands)
-    logger.info("Команды бота зарегистрированы (v1.2.0)")
+
+    # Устанавливаем кнопку Web App в меню чата (слева от поля ввода)
+    frontend_url = app_settings.frontend_url
+    if frontend_url.startswith("https://"):
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="📅 Планировщик",
+                    web_app=WebAppInfo(url=frontend_url),
+                )
+            )
+            logger.info("Кнопка Web App установлена в меню чата")
+        except Exception as e:
+            logger.warning("Не удалось установить кнопку Web App: %s", e)
+    else:
+        logger.info("HTTPS не настроен — кнопка Web App не установлена (нужен HTTPS)")
+
+    logger.info("Команды бота зарегистрированы (v1.3.0)")

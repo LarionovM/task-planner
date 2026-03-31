@@ -351,9 +351,9 @@ export default function Settings() {
 
       {/* Начало/конец дня */}
       <div className="settings-section card">
-        <h3>🕐 Начало и конец дня</h3>
+        <h3>🕐 Рабочий день</h3>
         <p className="hint" style={{ marginBottom: 8 }}>
-          Определяет рабочие часы для помодоро-циклов и слотов в календаре
+          Начало и конец рабочего дня — определяет часы для помодоро-циклов и слотов в календаре
         </p>
         <div style={{ display: 'flex', gap: 12 }}>
           <div style={{ flex: 1 }}>

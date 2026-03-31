@@ -1,5 +1,6 @@
-/* Тёмная тема — CSS переменные */
-:root {
+/* Тёмная тема — CSS переменные (по умолчанию) */
+:root,
+[data-theme="dark"] {
   --bg-primary: #1a1a2e;
   --bg-secondary: #16213e;
   --bg-card: #1f2b47;
@@ -26,6 +27,34 @@
   --radius-lg: 16px;
 
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
 
   --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Светлая тема */
+[data-theme="light"] {
+  --bg-primary: #f5f6fa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-input: #f0f2f5;
+  --bg-hover: #e8eaed;
+
+  --text-primary: #1a1a2e;
+  --text-secondary: #5a6270;
+  --text-muted: #8c95a0;
+
+  --accent: #3a7bd5;
+  --accent-hover: #2a6bc5;
+  --accent-light: rgba(58, 123, 213, 0.1);
+
+  --success: #27ae60;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+
+  --border: #dce0e6;
+  --border-light: #e8ecf0;
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
 }

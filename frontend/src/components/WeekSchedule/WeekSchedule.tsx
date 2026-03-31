@@ -134,6 +134,10 @@ export default function WeekSchedule() {
             <div className="spam-field">
               <label className="label">Множитель нарастания</label>
               <input className="input" type="number" min={1} max={5} step={0.1} value={spam.multiplier ?? 1.5} onChange={(e) => setSpam({ ...spam, multiplier: parseFloat(e.target.value) || 1.5 })} />
+              <span className="hint">
+                Каждое следующее напоминание приходит в {spam.multiplier ?? 1.5}x позже предыдущего.
+                Пример: {spam.initial_interval_sec ?? 10}с → {Math.round((spam.initial_interval_sec ?? 10) * (spam.multiplier ?? 1.5))}с → {Math.round((spam.initial_interval_sec ?? 10) * (spam.multiplier ?? 1.5) ** 2)}с → ...
+              </span>
             </div>
             <div className="spam-field">
               <label className="label">Макс. интервал (сек)</label>
