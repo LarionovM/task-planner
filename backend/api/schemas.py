@@ -223,6 +223,13 @@ class EventResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def time_to_str(cls, v):
+        if isinstance(v, time):
+            return v.strftime("%H:%M")
+        return v
+
 
 # === Блоки / Помодоро-сессии (v1.2.0) ===
 

@@ -180,15 +180,9 @@ async def schedule_pomodoro_cycle(user_id: int, user_tz: str = "Europe/Moscow") 
                 args=[user_id, pomo_number],
                 id=job_id,
             )
+            logger.debug(f"  pomo #{pomo_number} start: {current_dt.strftime('%H:%M')}")
 
-        # Конец помодоро (опросник) через work_min
-        end_pomo_dt = current_dt + timedelta(minutes=work_min)
-        if end_pomo_dt > now and end_pomo_dt < end_dt:
-            # Опросник будет вызываться из callback при создании блока
-            # Но для блоков без задачи нужен scheduled end
-            pass
-
-        # Перерыв
+        # Перерыв через work_min после старта
         is_long_break = (pomo_number % cycles_before_long == 0)
         break_min = long_break if is_long_break else short_break
 
@@ -201,6 +195,7 @@ async def schedule_pomodoro_cycle(user_id: int, user_tz: str = "Europe/Moscow") 
                 args=[user_id, pomo_number, is_long_break],
                 id=job_id,
             )
+            logger.debug(f"  pomo #{pomo_number} break: {break_dt.strftime('%H:%M')} ({break_min}min {'long' if is_long_break else 'short'})")
 
         # Следующий помодоро после перерыва
         current_dt = break_dt + timedelta(minutes=break_min)

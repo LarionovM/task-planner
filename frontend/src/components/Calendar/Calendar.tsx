@@ -62,6 +62,7 @@ export default function Calendar() {
   const [isDragging, setIsDragging] = useState(false)
   const [dropDay, setDropDay] = useState<string>('')
   const [dropTime, setDropTime] = useState<string>('')
+  const [assignDay, setAssignDay] = useState<string>('')  // день для назначения задачи
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -236,6 +237,25 @@ export default function Calendar() {
     }
   }
 
+  // Назначить задачу на день (из кнопки "+")
+  const handleAssignTask = (day: string) => setAssignDay(day)
+
+  const handleAssignConfirm = async (taskId: number) => {
+    try {
+      await api.updateTask(taskId, { scheduled_date: assignDay })
+      await loadTasks()
+      setAssignDay('')
+    } catch (e: any) {
+      alert(e.message || 'Ошибка')
+    }
+  }
+
+  // Незапланированные задачи для диалога назначения
+  const unscheduledTasks = useMemo(
+    () => tasks.filter((t) => !t.is_epic && !t.scheduled_date && t.status !== 'done'),
+    [tasks]
+  )
+
   // Сменить статус задачи
   const handleTaskStatusChange = async (taskId: number, status: string) => {
     try {
@@ -330,6 +350,7 @@ export default function Calendar() {
                     onDeleteEvent={handleDeleteEvent}
                     onUnscheduleTask={handleUnscheduleTask}
                     onTaskStatusChange={handleTaskStatusChange}
+                    onAssignTask={handleAssignTask}
                   />
                 ))}
               </div>
@@ -398,6 +419,46 @@ export default function Calendar() {
           onClose={() => setShowEventForm(false)}
           onSaved={() => { setShowEventForm(false); loadEvents() }}
         />
+      )}
+
+      {/* Диалог назначения задачи на день */}
+      {assignDay && (
+        <div className="overlay" onClick={() => setAssignDay('')}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <h3>📋 Назначить задачу на {assignDay}</h3>
+            {unscheduledTasks.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Нет незапланированных задач</p>
+            ) : (
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {unscheduledTasks.map((t) => {
+                  const cat = catMap[t.category_id]
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => handleAssignConfirm(t.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        width: '100%', padding: '8px 10px', marginBottom: 4,
+                        background: 'var(--bg-input)', border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                        color: 'var(--text-primary)', fontSize: 13, textAlign: 'left',
+                      }}
+                    >
+                      <span>{cat?.emoji || '📋'}</span>
+                      <span style={{ flex: 1 }}>{t.name}</span>
+                      {t.estimated_time_min && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>⏱{t.estimated_time_min}м</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="dialog-actions" style={{ marginTop: 8 }}>
+              <button className="btn btn-secondary" onClick={() => setAssignDay('')}>Закрыть</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div style={{ height: 80 }} />

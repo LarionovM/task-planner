@@ -445,24 +445,17 @@ export default function Backlog() {
           </select>
         </div>
         {/* Фильтр по статусу */}
-        <div className="backlog-status-filter">
-          <button
-            className={`backlog-status-btn${filterStatus === '' ? ' active' : ''}`}
-            onClick={() => setFilterStatus('')}
-          >
-            Все
-          </button>
+        <select
+          className="input backlog-filter-select"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          style={{ marginTop: 8 }}
+        >
+          <option value="">Все статусы</option>
           {(Object.keys(STATUS_EMOJI) as Array<keyof typeof STATUS_EMOJI>).map((st) => (
-            <button
-              key={st}
-              className={`backlog-status-btn${filterStatus === st ? ' active' : ''}`}
-              onClick={() => setFilterStatus(filterStatus === st ? '' : st)}
-              title={STATUS_LABELS[st]}
-            >
-              {STATUS_EMOJI[st]} {STATUS_LABELS[st]}
-            </button>
+            <option key={st} value={st}>{STATUS_EMOJI[st]} {STATUS_LABELS[st]}</option>
           ))}
-        </div>
+        </select>
         {/* Сортировка + переключатель вида */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div className="backlog-sort-bar" style={{ flex: 1 }}>
@@ -636,23 +629,33 @@ export default function Backlog() {
                   <input className="input" type="number" min={1} value={formEstTime} onChange={(e) => setFormEstTime(e.target.value)} placeholder="—" style={{ maxWidth: 140 }} />
 
                   <label className="label" style={{ marginTop: 12 }}>Запланировать на дату</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={formScheduledDate}
-                    onChange={(e) => setFormScheduledDate(e.target.value)}
-                    style={{ maxWidth: 180 }}
-                  />
-                  {formScheduledDate && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
-                      className="btn btn-sm btn-secondary"
-                      style={{ marginLeft: 8, fontSize: 11 }}
-                      onClick={() => setFormScheduledDate('')}
+                      className={`btn btn-sm ${formScheduledDate === new Date().toISOString().slice(0, 10) ? 'btn-primary' : 'btn-secondary'}`}
                       type="button"
-                    >
-                      Сбросить
-                    </button>
-                  )}
+                      onClick={() => setFormScheduledDate(new Date().toISOString().slice(0, 10))}
+                    >Сегодня</button>
+                    <button
+                      className={`btn btn-sm ${formScheduledDate === new Date(Date.now() + 86400000).toISOString().slice(0, 10) ? 'btn-primary' : 'btn-secondary'}`}
+                      type="button"
+                      onClick={() => setFormScheduledDate(new Date(Date.now() + 86400000).toISOString().slice(0, 10))}
+                    >Завтра</button>
+                    <input
+                      className="input"
+                      type="date"
+                      value={formScheduledDate}
+                      onChange={(e) => setFormScheduledDate(e.target.value)}
+                      style={{ maxWidth: 160, flex: 1 }}
+                    />
+                    {formScheduledDate && (
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        style={{ fontSize: 11 }}
+                        onClick={() => setFormScheduledDate('')}
+                        type="button"
+                      >✕</button>
+                    )}
+                  </div>
                   <span className="hint">На какой день запланирована задача</span>
 
                   <label className="schedule-toggle" style={{ marginTop: 12 }}>

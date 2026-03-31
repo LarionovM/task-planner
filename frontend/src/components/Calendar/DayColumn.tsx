@@ -18,6 +18,7 @@ interface DayColumnProps {
   onDeleteEvent: (eventId: number) => void
   onUnscheduleTask: (taskId: number) => void
   onTaskStatusChange: (taskId: number, status: string) => void
+  onAssignTask?: (day: string) => void
 }
 
 const STATUS_ICONS: Record<string, string> = {
@@ -180,7 +181,7 @@ export default function DayColumn({
   day, events, dayTasks, schedule, catMap,
   dayStartTime, dayEndTime,
   onEventClick, onAddEvent, onDeleteEvent,
-  onUnscheduleTask, onTaskStatusChange,
+  onUnscheduleTask, onTaskStatusChange, onAssignTask,
 }: DayColumnProps) {
   const slots = generateSlots(dayStartTime, dayEndTime)
 
@@ -245,8 +246,19 @@ export default function DayColumn({
           <div style={{
             fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
             padding: '6px 4px 2px', borderTop: '1px solid var(--border)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            🍅 Задачи на день ({sortedTasks.length})
+            <span>🍅 Задачи на день ({sortedTasks.length})</span>
+            {onAssignTask && (
+              <button
+                onClick={() => onAssignTask(day)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: 'var(--accent)', padding: 0, lineHeight: 1,
+                }}
+                title="Назначить задачу на этот день"
+              >+</button>
+            )}
           </div>
 
           <DayDropZone day={day} />
