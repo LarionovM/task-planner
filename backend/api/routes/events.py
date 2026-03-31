@@ -1,5 +1,6 @@
 """API маршруты для событий в календаре (v1.2.0)."""
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,7 +20,10 @@ from backend.db.crud.events import (
     update_event,
     delete_event,
 )
+from backend.db.crud.users import get_or_create_user
 from backend.db.models import AllowedUser
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -72,6 +76,18 @@ async def post_event(
         user_id=allowed.telegram_id,
         **data.model_dump(),
     )
+
+    # Планируем jobs для напоминаний о событии
+    try:
+        from backend.db.database import async_session
+        async with async_session() as s:
+            user = await get_or_create_user(s, allowed.telegram_id)
+        from backend.bot.scheduler import schedule_event_jobs
+        await schedule_event_jobs(event, user.timezone or "Europe/Moscow")
+        logger.info(f"Event jobs scheduled for event={event.id} '{event.name}'")
+    except Exception as e:
+        logger.error(f"Failed to schedule event jobs: {e}")
+
     return EventResponse.model_validate(event)
 
 

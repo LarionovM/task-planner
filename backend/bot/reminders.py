@@ -43,6 +43,10 @@ _spam_messages: dict[int, list[int]] = {}
 # {user_id: asyncio.Task} — активные спам-таски
 _spam_tasks: dict[int, asyncio.Task] = {}
 
+# Пользователи, которым уже отправлялось "нет задач" сегодня
+# Сбрасывается при планировании нового дня (schedule_pomodoro_cycle)
+_no_tasks_notified: set[int] = set()
+
 
 # === Вспомогательные ===
 
@@ -70,6 +74,32 @@ async def _is_event_active(user_id: int) -> bool:
             )
         )
         return result.scalars().first() is not None
+
+
+async def _is_event_upcoming(user_id: int, within_min: int = 25) -> Event | None:
+    """Проверяет, есть ли запланированное событие в ближайшие within_min минут.
+
+    Возвращает событие если есть, None если нет.
+    """
+    async with async_session() as session:
+        user = await get_or_create_user(session, user_id)
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
+        now = datetime.now(tz)
+        today = now.date()
+
+        events = await get_events_for_day(session, user_id, today)
+        for event in events:
+            if event.status in ("done", "active"):
+                continue
+            event_start = event.start_time
+            if isinstance(event_start, str):
+                h, m = map(int, event_start.split(":"))
+                event_start = time(h, m)
+            event_dt = datetime.combine(today, event_start).replace(tzinfo=tz)
+            diff_min = (event_dt - now).total_seconds() / 60
+            if 0 <= diff_min <= within_min:
+                return event
+    return None
 
 
 # === Помодоро-уведомления ===
@@ -100,11 +130,21 @@ async def send_pomodoro_start(user_id: int, pomodoro_number: int) -> None:
     if paused_until and paused_until > datetime.now():
         return
 
-    bot = get_bot()
-
     # Определяем настройки помодоро пользователя
     work_min = user.pomodoro_work_min or 25
     cycles_before_long = user.pomodoro_cycles_before_long or 4
+
+    # Проверяем, не начинается ли событие в ближайшие work_min минут
+    upcoming_event = await _is_event_upcoming(user_id, within_min=work_min)
+    if upcoming_event:
+        event_name = upcoming_event.name
+        logger.info(
+            f"Помодоро #{pomodoro_number} для user={user_id} — пропуск, "
+            f"событие «{event_name}» начинается в ближайшие {work_min} мин"
+        )
+        return
+
+    bot = get_bot()
 
     # Получаем задачи на сегодня
     async with async_session() as session:
@@ -147,7 +187,17 @@ async def send_pomodoro_start(user_id: int, pomodoro_number: int) -> None:
             parse_mode="Markdown",
         )
     else:
-        # Нет задач — запускаем помодоро без привязки
+        # Нет задач — после первого уведомления больше не спамим
+        if user_id in _no_tasks_notified:
+            logger.debug(
+                f"Помодоро #{pomodoro_number} для user={user_id} — пропуск, "
+                f"«нет задач» уже отправлялось"
+            )
+            return
+
+        _no_tasks_notified.add(user_id)
+
+        # Запускаем помодоро без привязки
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="⏭ Пропустить",

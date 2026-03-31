@@ -113,7 +113,10 @@ async def schedule_pomodoro_cycle(user_id: int, user_tz: str = "Europe/Moscow") 
     Циклы: 25 мин работа → 5 мин перерыв → 25 мин → 5 мин → ... → 25 мин → 30 мин (длинный перерыв).
     Помодоро не отправляется во время активных событий (проверяется в reminders.py).
     """
-    from backend.bot.reminders import send_pomodoro_start, send_pomodoro_break, send_pomodoro_end_questionnaire
+    from backend.bot.reminders import send_pomodoro_start, send_pomodoro_break, send_pomodoro_end_questionnaire, _no_tasks_notified
+
+    # Сброс флага "нет задач" при планировании нового дня
+    _no_tasks_notified.discard(user_id)
 
     async with async_session() as session:
         user = await get_or_create_user(session, user_id)
