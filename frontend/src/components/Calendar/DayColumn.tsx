@@ -212,54 +212,24 @@ export default function DayColumn({
 
   return (
     <div className={`day-column ${schedule?.is_day_off ? 'day-off-column' : ''}`}>
-      {/* Временная шкала с событиями */}
-      {slots.map((time) => {
-        const event = eventAtSlot[time]
-        const isOccupied = occupiedSlots.has(time)
-        if (isOccupied) return null
-
-        if (event) {
-          const duration = getEventDuration(event)
-          const slotsCount = Math.max(1, Math.ceil(duration / 30))
-          const color = getEventColor(event, catMap)
-
-          return (
-            <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)}>
-              <EventBlock
-                event={event}
-                color={color}
-                slotsCount={slotsCount}
-                catMap={catMap}
-                onEventClick={onEventClick}
-                onDeleteEvent={onDeleteEvent}
-              />
-            </TimeSlot>
-          )
-        }
-
-        return <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)} />
-      })}
-
-      {/* Задачи назначенные на этот день */}
-      {(sortedTasks.length > 0 || true) && (
-        <div className="day-tasks-section">
-          <div style={{
-            fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
-            padding: '6px 4px 2px', borderTop: '1px solid var(--border)',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <span>🍅 Задачи на день ({sortedTasks.length})</span>
-            {onAssignTask && (
-              <button
-                onClick={() => onAssignTask(day)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: 'var(--accent)', padding: 0, lineHeight: 1,
-                }}
-                title="Назначить задачу на этот день"
-              >+</button>
-            )}
-          </div>
+      {/* Задачи назначенные на этот день — до временных слотов */}
+      <div className="day-tasks-section">
+        <div style={{
+          fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
+          padding: '4px 4px 2px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span>🍅 Задачи ({sortedTasks.length})</span>
+          <button
+            onClick={() => onAssignTask?.(day)}
+            style={{
+              background: 'var(--accent)', border: 'none', cursor: 'pointer',
+              fontSize: 12, color: 'white', padding: '1px 8px', lineHeight: 1.4,
+              borderRadius: 'var(--radius-sm)', fontWeight: 600,
+            }}
+            title="Назначить задачу на этот день"
+          >+</button>
+        </div>
 
           <DayDropZone day={day} />
 
@@ -313,7 +283,34 @@ export default function DayColumn({
             )
           })}
         </div>
-      )}
+
+      {/* Временная шкала с событиями */}
+      {slots.map((time) => {
+        const event = eventAtSlot[time]
+        const isOccupied = occupiedSlots.has(time)
+        if (isOccupied) return null
+
+        if (event) {
+          const duration = getEventDuration(event)
+          const slotsCount = Math.max(1, Math.ceil(duration / 30))
+          const color = getEventColor(event, catMap)
+
+          return (
+            <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)}>
+              <EventBlock
+                event={event}
+                color={color}
+                slotsCount={slotsCount}
+                catMap={catMap}
+                onEventClick={onEventClick}
+                onDeleteEvent={onDeleteEvent}
+              />
+            </TimeSlot>
+          )
+        }
+
+        return <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)} />
+      })}
     </div>
   )
 }
