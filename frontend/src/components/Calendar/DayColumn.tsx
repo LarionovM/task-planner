@@ -7,7 +7,6 @@ import type { Event, Task, Category, WeeklyScheduleItem } from '../../types'
 
 interface DayColumnProps {
   day: string
-  dayOfWeek: number
   events: Event[]
   dayTasks: Task[]  // задачи, назначенные на этот день
   schedule?: WeeklyScheduleItem
@@ -178,7 +177,7 @@ function DayDropZone({ day }: { day: string }) {
 }
 
 export default function DayColumn({
-  day, dayOfWeek, events, dayTasks, schedule, catMap,
+  day, events, dayTasks, schedule, catMap,
   dayStartTime, dayEndTime,
   onEventClick, onAddEvent, onDeleteEvent,
   onUnscheduleTask, onTaskStatusChange,

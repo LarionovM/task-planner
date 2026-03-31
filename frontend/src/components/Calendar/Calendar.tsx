@@ -316,7 +316,7 @@ export default function Calendar() {
               <div className="calendar-columns">
                 {weekDays.map((day, i) => (
                   <DayColumn
-                    key={day} day={day} dayOfWeek={i}
+                    key={day} day={day}
                     events={eventsByDay[day] || []}
                     dayTasks={tasksByDay[day] || []}
                     schedule={schedule.find((s) => s.day_of_week === i)}
@@ -361,7 +361,6 @@ export default function Calendar() {
                 <DayColumn
                   key={weekDays[selectedDayIndex]}
                   day={weekDays[selectedDayIndex]}
-                  dayOfWeek={selectedDayIndex}
                   events={eventsByDay[weekDays[selectedDayIndex]] || []}
                   dayTasks={tasksByDay[weekDays[selectedDayIndex]] || []}
                   schedule={schedule.find((s) => s.day_of_week === selectedDayIndex)}

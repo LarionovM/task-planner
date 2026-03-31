@@ -99,6 +99,8 @@ export interface SpamConfig {
   max_interval_sec: number
   enabled: boolean
   spam_category_ids: number[]
+  empty_slots_enabled: boolean
+  empty_slots_interval_min: number
 }
 
 export interface CategoryStats {
