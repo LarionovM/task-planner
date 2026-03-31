@@ -275,8 +275,10 @@ export default function Calendar() {
 
   const formatDayLabel = (dayStr: string) => {
     const d = new Date(dayStr + 'T00:00:00')
-    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', weekday: 'long' }
-    return d.toLocaleDateString('ru', opts)
+    const shortDay = d.toLocaleDateString('ru', { weekday: 'short' })
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    return `${shortDay}, ${dd}.${mm}`
   }
 
   return (
@@ -395,6 +397,7 @@ export default function Calendar() {
                   onDeleteEvent={handleDeleteEvent}
                   onUnscheduleTask={handleUnscheduleTask}
                   onTaskStatusChange={handleTaskStatusChange}
+                  onAssignTask={handleAssignTask}
                 />
               </div>
             </div>

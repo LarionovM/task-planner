@@ -281,39 +281,49 @@ async def send_pomodoro_end_questionnaire(block_id: int) -> None:
 
 async def send_pomodoro_break(user_id: int, pomodoro_number: int, is_long: bool = False) -> None:
     """Уведомление о перерыве (короткий или длинный)."""
-    from backend.bot.scheduler import get_bot
+    try:
+        from backend.bot.scheduler import get_bot
 
-    # Проверяем, не идёт ли событие
-    if await _is_event_active(user_id):
-        return
+        logger.debug(f"send_pomodoro_break: user={user_id}, pomo={pomodoro_number}, is_long={is_long}")
 
-    bot = get_bot()
+        # Проверяем, не идёт ли событие
+        if await _is_event_active(user_id):
+            logger.debug(f"Перерыв для user={user_id} пропущен — активное событие")
+            return
 
-    async with async_session() as session:
-        user = await get_or_create_user(session, user_id)
+        bot = get_bot()
+        if not bot:
+            logger.error(f"send_pomodoro_break: bot is None!")
+            return
 
-    if is_long:
-        break_min = user.pomodoro_long_break_min or 30
-        text = (
-            f"🎉 *Длинный перерыв!* — {break_min} мин\n"
-            f"Ты сделал {user.pomodoro_cycles_before_long or 4} помодоро подряд! 💪\n"
-            f"Отдохни как следует: прогуляйся, перекуси, разомнись 🧘"
-        )
-    else:
-        break_min = user.pomodoro_short_break_min or 5
-        text = (
-            f"⏸ *Перерыв* — {break_min} мин\n"
-            f"Встань, потянись, глотни воды 🌿"
-        )
+        async with async_session() as session:
+            user = await get_or_create_user(session, user_id)
 
-    await bot.send_message(user_id, text, parse_mode="Markdown")
+        if is_long:
+            break_min = user.pomodoro_long_break_min or 30
+            text = (
+                f"🎉 *Длинный перерыв!* — {break_min} мин\n"
+                f"Ты сделал {user.pomodoro_cycles_before_long or 4} помодоро подряд! 💪\n"
+                f"Отдохни как следует: прогуляйся, перекуси, разомнись 🧘"
+            )
+        else:
+            break_min = user.pomodoro_short_break_min or 5
+            text = (
+                f"⏸ *Перерыв* — {break_min} мин\n"
+                f"Встань, потянись, глотни воды 🌿"
+            )
 
-    async with async_session() as session:
-        event_type = "pomodoro_break"
-        await create_log(session, user_id, event_type,
-                         payload={"pomodoro_number": pomodoro_number, "is_long": is_long,
-                                  "break_min": break_min})
-        await session.commit()
+        await bot.send_message(user_id, text, parse_mode="Markdown")
+        logger.info(f"Перерыв отправлен: user={user_id}, pomo={pomodoro_number}, long={is_long}")
+
+        async with async_session() as session:
+            event_type = "pomodoro_break"
+            await create_log(session, user_id, event_type,
+                             payload={"pomodoro_number": pomodoro_number, "is_long": is_long,
+                                      "break_min": break_min})
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Ошибка в send_pomodoro_break: user={user_id}, pomo={pomodoro_number}: {e}", exc_info=True)
 
 
 # === Уведомления о событиях ===

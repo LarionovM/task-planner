@@ -253,8 +253,8 @@ export default function Settings() {
               type="number"
               className="input"
               min={5} max={120} step={5}
-              value={pomodoroWork}
-              onChange={(e) => setPomodoroWork(Number(e.target.value))}
+              value={pomodoroWork || ''}
+              onChange={(e) => setPomodoroWork(e.target.value === '' ? 0 : Number(e.target.value))}
             />
           </div>
           <div>
@@ -263,8 +263,8 @@ export default function Settings() {
               type="number"
               className="input"
               min={1} max={30} step={1}
-              value={pomodoroShortBreak}
-              onChange={(e) => setPomodoroShortBreak(Number(e.target.value))}
+              value={pomodoroShortBreak || ''}
+              onChange={(e) => setPomodoroShortBreak(e.target.value === '' ? 0 : Number(e.target.value))}
             />
           </div>
           <div>
@@ -273,8 +273,8 @@ export default function Settings() {
               type="number"
               className="input"
               min={5} max={60} step={5}
-              value={pomodoroLongBreak}
-              onChange={(e) => setPomodoroLongBreak(Number(e.target.value))}
+              value={pomodoroLongBreak || ''}
+              onChange={(e) => setPomodoroLongBreak(e.target.value === '' ? 0 : Number(e.target.value))}
             />
           </div>
           <div>
@@ -283,8 +283,8 @@ export default function Settings() {
               type="number"
               className="input"
               min={2} max={10} step={1}
-              value={pomodoroCycles}
-              onChange={(e) => setPomodoroCycles(Number(e.target.value))}
+              value={pomodoroCycles || ''}
+              onChange={(e) => setPomodoroCycles(e.target.value === '' ? 0 : Number(e.target.value))}
             />
           </div>
         </div>

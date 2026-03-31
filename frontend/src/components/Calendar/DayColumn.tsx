@@ -162,11 +162,11 @@ function DayDropZone({ day }: { day: string }) {
       ref={setNodeRef}
       className={`day-task-drop-zone ${isOver ? 'droppable' : ''}`}
       style={{
-        minHeight: 28,
-        padding: '2px 4px',
+        minHeight: isOver ? 24 : 0,
+        padding: isOver ? '2px 4px' : 0,
         borderRadius: 4,
-        border: isOver ? '2px dashed var(--accent)' : '2px dashed transparent',
-        transition: 'border-color 0.15s',
+        border: isOver ? '2px dashed var(--accent)' : 'none',
+        transition: 'all 0.15s',
         fontSize: 10,
         color: 'var(--text-muted)',
         textAlign: 'center',
@@ -212,14 +212,18 @@ export default function DayColumn({
 
   return (
     <div className={`day-column ${schedule?.is_day_off ? 'day-off-column' : ''}`}>
-      {/* Задачи назначенные на этот день — до временных слотов */}
-      <div className="day-tasks-section">
+      {/* Задачи назначенные на этот день — фиксированная высота для выравнивания колонок */}
+      <div className="day-tasks-section" style={{
+        height: 80,
+        overflowY: 'auto',
+        borderBottom: '1px solid var(--border)',
+      }}>
         <div style={{
           fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
           padding: '4px 4px 2px',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <span>🍅 Задачи ({sortedTasks.length})</span>
+          <span>Задачи на день ({sortedTasks.length})</span>
           <button
             onClick={() => onAssignTask?.(day)}
             style={{

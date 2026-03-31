@@ -1,6 +1,7 @@
 """Middleware для проверки whitelist в aiogram."""
 
 import logging
+import time as _time
 from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware, Bot
@@ -35,6 +36,19 @@ ALREADY_REQUESTED_MESSAGE = (
 # В памяти — сбрасывается при перезагрузке, это нормально
 _pending_requests: set[int] = set()
 
+# Кэш whitelist: {telegram_id: (AllowedUser, timestamp)}
+# TTL 60 секунд — после этого перечитаем из БД
+_whitelist_cache: dict[int, tuple[Any, float]] = {}
+_CACHE_TTL = 60  # секунд
+
+
+def invalidate_whitelist_cache(telegram_id: int | None = None) -> None:
+    """Сбросить кэш whitelist (при добавлении/удалении пользователя)."""
+    if telegram_id:
+        _whitelist_cache.pop(telegram_id, None)
+    else:
+        _whitelist_cache.clear()
+
 
 def _request_keyboard() -> InlineKeyboardMarkup:
     """Кнопка отправки запроса доступа."""
@@ -68,9 +82,15 @@ class WhitelistMiddleware(BaseMiddleware):
         if user_id is None:
             return  # Игнорируем события без пользователя
 
-        # Проверяем whitelist
-        async with async_session() as session:
-            allowed = await get_allowed_user(session, user_id)
+        # Проверяем whitelist (с кэшем)
+        now = _time.monotonic()
+        cached = _whitelist_cache.get(user_id)
+        if cached and (now - cached[1]) < _CACHE_TTL:
+            allowed = cached[0]
+        else:
+            async with async_session() as session:
+                allowed = await get_allowed_user(session, user_id)
+            _whitelist_cache[user_id] = (allowed, now)
 
         if allowed is None or not allowed.is_active:
             # --- Обработка запроса доступа от неавторизованного пользователя ---

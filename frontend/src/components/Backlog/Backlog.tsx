@@ -51,6 +51,7 @@ export default function Backlog() {
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [deleteTask, setDeleteTask] = useState<Task | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [expandedEpics, setExpandedEpics] = useState<Set<number>>(new Set())
   const [sortField, setSortField] = useState<SortField>('priority')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -231,6 +232,7 @@ export default function Backlog() {
   const handleSave = async () => {
     if (!formName.trim() || !formCatId) return
     setSaving(true)
+    setSaveError(null)
     try {
       const data: any = {
         name: formName.trim(),
@@ -246,9 +248,9 @@ export default function Backlog() {
         is_recurring: formRecurring,
         recur_days: formRecurDays,
         tags: [],
-        depends_on: formDependsOn ? [formDependsOn] : [],
+        depends_on: formDependsOn ? [Number(formDependsOn)] : [],
         is_epic: formIsEpic,
-        epic_id: formIsEpic ? null : (formEpicId || null),
+        epic_id: formIsEpic ? null : (formEpicId ? Number(formEpicId) : null),
         epic_emoji: formIsEpic ? (formEpicEmoji || null) : null,
       }
       let savedTask: any
@@ -269,6 +271,9 @@ export default function Backlog() {
 
       await loadTasks()
       setShowForm(false)
+    } catch (e: any) {
+      console.error('Ошибка сохранения задачи:', e)
+      setSaveError(e.message || 'Ошибка сохранения')
     } finally {
       setSaving(false)
     }
@@ -593,18 +598,15 @@ export default function Backlog() {
               {!formIsEpic && (
                 <>
                   <label className="label">Статус</label>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  <select
+                    className="input"
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value as typeof formStatus)}
+                  >
                     {(Object.keys(STATUS_EMOJI) as Array<keyof typeof STATUS_EMOJI>).map((st) => (
-                      <button
-                        key={st}
-                        className={`btn btn-sm ${formStatus === st ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setFormStatus(st as typeof formStatus)}
-                        type="button"
-                      >
-                        {STATUS_EMOJI[st]} {STATUS_LABELS[st]}
-                      </button>
+                      <option key={st} value={st}>{STATUS_EMOJI[st]} {STATUS_LABELS[st]}</option>
                     ))}
-                  </div>
+                  </select>
 
                   <label className="label" style={{ marginTop: 12 }}>Описание</label>
                   <textarea
@@ -761,6 +763,7 @@ export default function Backlog() {
                 </>
               )}
             </div>
+            {saveError && <div style={{ color: 'var(--danger)', padding: '8px 16px', fontSize: '0.85rem' }}>{saveError}</div>}
             <div className="dialog-actions">
               <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving || !formName.trim() || !formCatId}>{saving ? '...' : 'Сохранить'}</button>
