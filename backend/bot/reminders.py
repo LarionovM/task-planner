@@ -46,6 +46,11 @@ _spam_tasks: dict[int, asyncio.Task] = {}
 # {user_id: asyncio.Task} — спам-таски для игнора выбора задачи в помодоро
 _pomo_pick_spam_tasks: dict[int, asyncio.Task] = {}
 
+# {user_id} — пользователи, ожидающие нажатия кнопки выбора задачи
+# Добавляется при отправке вопроса, удаляется при нажатии любой кнопки.
+# _maybe_start_pomo_pick_spam проверяет наличие перед стартом спама.
+_pomo_pick_pending: set[int] = set()
+
 # Пользователи, которым уже отправлялось "нет задач" сегодня
 # Сбрасывается при планировании нового дня (schedule_pomodoro_cycle)
 _no_tasks_notified: set[int] = set()
@@ -213,6 +218,7 @@ async def send_pomodoro_start(user_id: int, pomodoro_number: int) -> None:
         )
 
         # Запускаем спам если пользователь игнорирует выбор задачи
+        _pomo_pick_pending.add(user_id)
         async with async_session() as session:
             spam_config = await get_spam_config(session, user_id)
         if spam_config and spam_config.enabled:
@@ -535,9 +541,10 @@ async def _maybe_start_spam(user_id: int, block_id: int, questionnaire_msg_id: i
 
 async def _maybe_start_pomo_pick_spam(user_id: int, spam_config) -> None:
     """Спам если пользователь проигнорировал выбор задачи в помодоро."""
-    # Если спам уже отменён (пользователь нажал кнопку) — ничего не делаем
-    if user_id not in _pomo_pick_spam_tasks and user_id not in _spam_tasks:
-        pass  # продолжаем
+    # Если пользователь уже нажал кнопку — маркер удалён, выходим
+    if user_id not in _pomo_pick_pending:
+        return
+    _pomo_pick_pending.discard(user_id)
 
     from backend.bot.scheduler import get_bot
     async with async_session() as session:
@@ -574,6 +581,7 @@ async def _maybe_start_pomo_pick_spam(user_id: int, spam_config) -> None:
 
 def stop_pomo_pick_spam(user_id: int) -> None:
     """Останавливает спам выбора задачи при нажатии любой кнопки помодоро."""
+    _pomo_pick_pending.discard(user_id)  # маркер «ожидает нажатия» — сбрасываем
     if user_id in _pomo_pick_spam_tasks:
         _pomo_pick_spam_tasks[user_id].cancel()
         del _pomo_pick_spam_tasks[user_id]
