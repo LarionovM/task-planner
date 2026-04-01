@@ -26,6 +26,7 @@ interface DayColumnProps {
   onUnscheduleTask: (taskId: number) => void
   onTaskStatusChange: (taskId: number, status: string) => void
   onAssignTask?: (day: string) => void
+  hideDayTasks?: boolean  // скрыть секцию "Задачи на день" (для недельного вида)
 }
 
 const STATUS_ICONS: Record<string, string> = {
@@ -264,6 +265,7 @@ export default function DayColumn({
   morningExpanded, eveningExpanded, onToggleMorning, onToggleEvening,
   onEventClick, onAddEvent, onDeleteEvent,
   onUnscheduleTask, onTaskStatusChange, onAssignTask,
+  hideDayTasks = false,
 }: DayColumnProps) {
   const allSlots = generateSlots(dayStartTime, dayEndTime, activeFrom, activeTo)
   const morningSlots = allSlots.filter((s) => s.time < activeFrom)
@@ -371,7 +373,7 @@ export default function DayColumn({
 
     return (
       <div className="day-column day-off-column">
-        {tasksSection}
+        {!hideDayTasks && tasksSection}
         {!anyExpanded ? (
           <button className="off-hours-toggle off-hours-toggle-dayoff" onClick={handleExpandDayOff}>
             ▶ Показать слоты
@@ -390,7 +392,7 @@ export default function DayColumn({
   // Рабочий день: утро (скрыто) → рабочие часы (всегда) → вечер (скрыто)
   return (
     <div className="day-column">
-      {tasksSection}
+      {!hideDayTasks && tasksSection}
 
       {/* Утренние нерабочие слоты */}
       {morningSlots.length > 0 && (

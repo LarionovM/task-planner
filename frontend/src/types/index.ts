@@ -11,6 +11,7 @@ export interface User {
   pomodoro_cycles_before_long: number
   reminders_paused_until: string | null
   reminders_stopped: boolean
+  productive_mode_enabled: boolean
   is_admin: boolean
   is_active: boolean
   created_at: string | null
@@ -35,6 +36,8 @@ export interface Task {
   link: string | null
   is_recurring: boolean
   recur_days: number[]
+  recur_time: string | null   // HH:MM — время авто-слота для регулярных задач
+  recur_duration_min: number | null
   scheduled_date: string | null // YYYY-MM-DD
   deadline: string | null
   tags: string[]

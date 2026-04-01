@@ -71,6 +71,8 @@ export default function Backlog() {
   const [formEstTime, setFormEstTime] = useState<string>('')
   const [formRecurring, setFormRecurring] = useState(false)
   const [formRecurDays, setFormRecurDays] = useState<number[]>([])
+  const [formRecurTime, setFormRecurTime] = useState('')
+  const [formRecurDuration, setFormRecurDuration] = useState('')
   const [formDependsOn, setFormDependsOn] = useState<number | ''>('')
   const [formIsEpic, setFormIsEpic] = useState(false)
   const [formEpicId, setFormEpicId] = useState<number | ''>('')
@@ -198,6 +200,8 @@ export default function Backlog() {
     setFormEstTime('')
     setFormRecurring(false)
     setFormRecurDays([])
+    setFormRecurTime('')
+    setFormRecurDuration('')
     setFormDependsOn('')
     setFormIsEpic(isEpic)
     setFormEpicId('')
@@ -219,6 +223,8 @@ export default function Backlog() {
     setFormEstTime(task.estimated_time_min?.toString() || '')
     setFormRecurring(task.is_recurring)
     setFormRecurDays(task.recur_days || [])
+    setFormRecurTime(task.recur_time || '')
+    setFormRecurDuration(task.recur_duration_min?.toString() || '')
     setFormDependsOn(task.depends_on?.[0] || '')
     setFormIsEpic(task.is_epic || false)
     setFormEpicId(task.epic_id || '')
@@ -244,6 +250,8 @@ export default function Backlog() {
         spam_enabled: true,
         is_recurring: formRecurring,
         recur_days: formRecurDays,
+        recur_time: formRecurTime || null,
+        recur_duration_min: formRecurDuration ? parseInt(formRecurDuration) : null,
         tags: [],
         depends_on: formDependsOn ? [Number(formDependsOn)] : [],
         is_epic: formIsEpic,
@@ -749,6 +757,31 @@ export default function Backlog() {
                         {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((name, i) => (
                           <button key={i} className={`btn btn-sm ${formRecurDays.includes(i) ? 'btn-primary' : 'btn-secondary'}`} onClick={() => toggleRecurDay(i)}>{name}</button>
                         ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="backlog-form-label">Время старта</label>
+                          <input
+                            type="time"
+                            className="input"
+                            value={formRecurTime}
+                            onChange={(e) => setFormRecurTime(e.target.value)}
+                            placeholder="не задано"
+                          />
+                          <div className="backlog-form-hint">Авто-слот в это время</div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label className="backlog-form-label">Длительность (мин)</label>
+                          <input
+                            type="number"
+                            className="input"
+                            value={formRecurDuration}
+                            onChange={(e) => setFormRecurDuration(e.target.value)}
+                            min={1}
+                            placeholder="не задано"
+                          />
+                          <div className="backlog-form-hint">Для авто-слота</div>
+                        </div>
                       </div>
                     </div>
                   )}

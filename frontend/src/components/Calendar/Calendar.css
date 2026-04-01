@@ -561,3 +561,32 @@
     font-size: 13px;
   }
 }
+
+/* View tabs: Неделя / День */
+.calendar-view-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.calendar-view-tab {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.calendar-view-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.calendar-view-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}

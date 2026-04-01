@@ -207,7 +207,7 @@ async def send_pomodoro_start(user_id: int, pomodoro_number: int) -> None:
         )])
 
         text = (
-            f"🍅 *Помодоро #{pomodoro_number}* — {work_min} мин\n"
+            f"⚡ *Фокус #{pomodoro_number}* — {work_min} мин\n"
             f"Какую задачу берёшь?"
         )
 
@@ -248,7 +248,7 @@ async def send_pomodoro_start(user_id: int, pomodoro_number: int) -> None:
             )],
         ])
         text = (
-            f"🍅 *Помодоро #{pomodoro_number}* — {work_min} мин\n"
+            f"⚡ *Фокус #{pomodoro_number}* — {work_min} мин\n"
             f"Задач на сегодня нет. Фокус начат! 🎯"
         )
         await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode="Markdown")
@@ -293,14 +293,14 @@ async def send_pomodoro_end_questionnaire(block_id: int) -> None:
     bot = get_bot()
 
     # Получаем имя задачи
-    task_name = "Помодоро"
+    task_name = "Задача"
     if block.task_id:
         async with async_session() as session:
             task = await get_task(session, block.task_id, block.user_id)
             if task:
                 task_name = task.name
 
-    text = f"🏁 *Помодоро #{block.pomodoro_number or 1}* завершён!\n📝 {task_name}\n\nКак прошло?"
+    text = f"🏁 *Фокус #{block.pomodoro_number or 1}* завершён!\n📝 {task_name}\n\nКак прошло?"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -346,7 +346,7 @@ async def send_pomodoro_break(user_id: int, pomodoro_number: int, is_long: bool 
             break_min = user.pomodoro_long_break_min or 30
             text = (
                 f"🎉 *Длинный перерыв!* — {break_min} мин\n"
-                f"Ты сделал {user.pomodoro_cycles_before_long or 4} помодоро подряд! 💪\n"
+                f"Ты сделал {user.pomodoro_cycles_before_long or 4} цикла подряд! 💪\n"
                 f"Отдохни как следует: прогуляйся, перекуси, разомнись 🧘"
             )
         else:
@@ -657,12 +657,18 @@ async def _start_spam_loop(
                     if not obj or obj.status in ("done", "skipped", "failed", "partial"):
                         break
 
-                # Проверяем рабочее время
+                # Проверяем паузу / стоп / рабочее время
                 async with async_session() as session:
                     user = await get_or_create_user(session, user_id)
                     tz = ZoneInfo(user.timezone or "Europe/Moscow")
                     now = datetime.now(tz)
                     current_time = now.time()
+
+                    if getattr(user, 'reminders_stopped', False):
+                        break
+                    paused_until = getattr(user, 'reminders_paused_until', None)
+                    if paused_until and paused_until > datetime.now():
+                        break
 
                     schedule = await get_weekly_schedule(session, user_id)
                     if not _is_in_working_hours(current_time, schedule, now.weekday()):
@@ -837,31 +843,71 @@ async def send_day_summary(user_id: int) -> None:
 
 
 async def send_restart_notification(user_id: int, block: TaskBlock) -> None:
-    """Уведомление при рестарте: блок был активен, спросить как прошёл."""
+    """Уведомление при рестарте.
+
+    Если блок ещё не должен был завершиться — сообщаем что он в процессе,
+    планируем опросник на реальное время окончания.
+    Если время уже прошло — сразу задаём вопрос как прошёл.
+    """
     from backend.bot.scheduler import get_bot
 
     bot = get_bot()
 
-    task_name = "Помодоро"
+    task_name = "Задача"
     if block.task_id:
         async with async_session() as session:
             task = await get_task(session, block.task_id, user_id)
             if task:
                 task_name = task.name
 
-    text = (
-        f"🔄 Бот перезапустился.\n"
-        f"*{task_name}* (помодоро #{block.pomodoro_number or 1}) — был активен.\nКак прошёл?"
-    )
+    # Определяем, прошло ли уже запланированное время окончания
+    async with async_session() as session:
+        user = await get_or_create_user(session, user_id)
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Выполнено", callback_data=f"quest_done:{block.id}"),
-            InlineKeyboardButton(text="⚡ Частично", callback_data=f"quest_partial:{block.id}"),
-        ],
-        [
-            InlineKeyboardButton(text="❌ Не выполнено", callback_data=f"quest_failed:{block.id}"),
-        ],
-    ])
+    now = datetime.now(tz)
 
-    await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode="Markdown")
+    # Рассчитываем плановое время окончания блока
+    if isinstance(block.start_time, str):
+        h, m = map(int, block.start_time.split(":"))
+        start_time_obj = time(h, m)
+    else:
+        start_time_obj = block.start_time
+
+    block_start_dt = datetime.combine(block.day, start_time_obj).replace(tzinfo=tz)
+    block_end_dt = block_start_dt + timedelta(minutes=block.duration_min or 25)
+
+    if now < block_end_dt:
+        # Блок ещё в процессе — сообщаем статус, не задаём вопрос
+        remaining = int((block_end_dt - now).total_seconds() / 60)
+        text = (
+            f"🔄 Бот перезапустился.\n"
+            f"«*{task_name}*» в процессе, осталось ~{remaining} мин."
+        )
+        await bot.send_message(user_id, text, parse_mode="Markdown")
+
+        # Планируем опросник на конец блока
+        from backend.bot.scheduler import _safe_add_job
+        job_id = f"pomo_end_{user_id}_{block.id}"
+        _safe_add_job(
+            send_pomodoro_end_questionnaire,
+            run_date=block_end_dt,
+            args=[block.id],
+            id=job_id,
+        )
+    else:
+        # Время прошло — задаём опросник
+        text = (
+            f"🔄 Бот перезапустился.\n"
+            f"«*{task_name}*» была активна — как прошло?"
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Выполнено", callback_data=f"quest_done:{block.id}"),
+                InlineKeyboardButton(text="⚡ Частично", callback_data=f"quest_partial:{block.id}"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Не выполнено", callback_data=f"quest_failed:{block.id}"),
+            ],
+        ])
+        await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode="Markdown")

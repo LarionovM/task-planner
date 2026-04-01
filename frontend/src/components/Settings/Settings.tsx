@@ -15,7 +15,7 @@ import EmojiPicker from '../EmojiPicker'
 import ThemeToggle from '../ThemeToggle'
 import './Settings.css'
 
-type SettingsTab = 'general' | 'bot' | 'timer' | 'categories'
+type SettingsTab = 'general' | 'bot' | 'productivity' | 'categories'
 
 // === Вспомогательные ===
 
@@ -322,10 +322,11 @@ function BotTab() {
 
       {/* Спам */}
       <div className="settings-section card">
-        <h3>📢 Напоминания</h3>
-        <p className="hint" style={{ marginBottom: 8 }}>
-          Если проигноришь завершение — бот напомнит с нарастающим интервалом
-        </p>
+        <h3>📢 Настойчивые напоминания</h3>
+        <div className="info-panel">
+          <span className="info-panel-icon">ℹ️</span>
+          <span>Если ты проигнорировал вопрос «как прошло?» — бот начнёт напоминать с нарастающим интервалом. Множитель 1 = равномерный интервал. Больше 1 = интервал растёт с каждым сообщением. Помогает не забыть закрыть задачу.</span>
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginBottom: 8 }}>
           <input type="checkbox" checked={spam.enabled ?? true} onChange={(e) => setSpam({ ...spam, enabled: e.target.checked })} />
           Включить
@@ -338,30 +339,12 @@ function BotTab() {
             </div>
             <div>
               <label className="label">Множитель</label>
-              <input className="input" type="number" min={1} max={5} step={0.1} value={spam.multiplier ?? 1.5} onChange={(e) => setSpam({ ...spam, multiplier: parseFloat(e.target.value) || 1.5 })} />
+              <input className="input" type="number" min={1} max={5} step={0.1} value={spam.multiplier ?? 1.0} onChange={(e) => setSpam({ ...spam, multiplier: parseFloat(e.target.value) || 1.0 })} />
             </div>
             <div>
               <label className="label">Макс (сек)</label>
               <input className="input" type="number" min={60} max={3600} value={spam.max_interval_sec ?? 600} onChange={(e) => setSpam({ ...spam, max_interval_sec: parseInt(e.target.value) || 600 })} />
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Пустые слоты */}
-      <div className="settings-section card">
-        <h3>📋 Пустые слоты</h3>
-        <p className="hint" style={{ marginBottom: 8 }}>
-          Напоминание заполнить план, если есть задачи и свободные слоты
-        </p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginBottom: 8 }}>
-          <input type="checkbox" checked={spam.empty_slots_enabled ?? true} onChange={(e) => setSpam({ ...spam, empty_slots_enabled: e.target.checked })} />
-          Включить
-        </label>
-        {spam.empty_slots_enabled && (
-          <div>
-            <label className="label">Интервал повтора утром (мин)</label>
-            <input className="input" type="number" min={10} max={120} value={spam.empty_slots_interval_min ?? 30} onChange={(e) => setSpam({ ...spam, empty_slots_interval_min: parseInt(e.target.value) || 30 })} style={{ maxWidth: 120 }} />
           </div>
         )}
       </div>
@@ -371,12 +354,12 @@ function BotTab() {
 
 
 // =============================================================
-// ВКЛАДКА 3: Таймер (помодоро)
+// ВКЛАДКА 3: Продуктивность (режим + настройки цикла фокуса)
 // =============================================================
 
-function TimerTab() {
+function ProductivityTab() {
   const { user, loadUser, setHasUnsavedChanges } = useStore()
-  // Строковые состояния для числовых полей — избегаем "04" при вводе (У10)
+  const [productiveMode, setProductiveMode] = useState(false)
   const [pomodoroWork, setPomodoroWork] = useState('25')
   const [pomodoroShortBreak, setPomodoroShortBreak] = useState('5')
   const [pomodoroLongBreak, setPomodoroLongBreak] = useState('30')
@@ -388,11 +371,13 @@ function TimerTab() {
 
   useEffect(() => {
     if (user) {
+      setProductiveMode(user.productive_mode_enabled ?? false)
       setPomodoroWork(String(user.pomodoro_work_min || 25))
       setPomodoroShortBreak(String(user.pomodoro_short_break_min || 5))
       setPomodoroLongBreak(String(user.pomodoro_long_break_min || 30))
       setPomodoroCycles(String(user.pomodoro_cycles_before_long || 4))
       setInitial(JSON.stringify({
+        pm: user.productive_mode_enabled ?? false,
         w: user.pomodoro_work_min || 25, sb: user.pomodoro_short_break_min || 5,
         lb: user.pomodoro_long_break_min || 30, c: user.pomodoro_cycles_before_long || 4,
       }))
@@ -404,10 +389,10 @@ function TimerTab() {
     const sb = parseInt(pomodoroShortBreak) || 0
     const lb = parseInt(pomodoroLongBreak) || 0
     const c = parseInt(pomodoroCycles) || 0
-    const changed = initial !== '' && JSON.stringify({ w, sb, lb, c }) !== initial
+    const changed = initial !== '' && JSON.stringify({ pm: productiveMode, w, sb, lb, c }) !== initial
     setHasChanges(changed)
     setHasUnsavedChanges(changed)
-  }, [pomodoroWork, pomodoroShortBreak, pomodoroLongBreak, pomodoroCycles, initial])
+  }, [productiveMode, pomodoroWork, pomodoroShortBreak, pomodoroLongBreak, pomodoroCycles, initial])
 
   useEffect(() => { return () => { setHasUnsavedChanges(false) } }, [])
 
@@ -420,13 +405,14 @@ function TimerTab() {
     setSaving(true)
     try {
       await api.updateSettings({
+        productive_mode_enabled: productiveMode,
         pomodoro_work_min: w,
         pomodoro_short_break_min: sb,
         pomodoro_long_break_min: lb,
         pomodoro_cycles_before_long: c,
       })
       await loadUser()
-      setInitial(JSON.stringify({ w, sb, lb, c }))
+      setInitial(JSON.stringify({ pm: productiveMode, w, sb, lb, c }))
       setHasChanges(false)
       setHasUnsavedChanges(false)
       setSaved(true)
@@ -446,30 +432,53 @@ function TimerTab() {
       {saved && <div style={{ textAlign: 'center', color: 'var(--success)', padding: 4, fontSize: 13 }}>✅ Сохранено</div>}
 
       <div className="settings-section card">
-        <h3>🍅 Помодоро-цикл</h3>
-        <p className="hint" style={{ marginBottom: 8 }}>Автоматические циклы фокусировки в течение рабочего дня</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <label className="label">Работа (мин)</label>
-            <input type="number" className="input" min={5} max={120} step={5} value={pomodoroWork} onChange={(e) => setPomodoroWork(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Короткий перерыв</label>
-            <input type="number" className="input" min={1} max={30} step={1} value={pomodoroShortBreak} onChange={(e) => setPomodoroShortBreak(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Длинный перерыв</label>
-            <input type="number" className="input" min={5} max={60} step={5} value={pomodoroLongBreak} onChange={(e) => setPomodoroLongBreak(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Циклов до длинного</label>
-            <input type="number" className="input" min={2} max={10} step={1} value={pomodoroCycles} onChange={(e) => setPomodoroCycles(e.target.value)} />
-          </div>
+        <h3>⚡ Режим продуктивной работы</h3>
+        <div className="info-panel">
+          <span className="info-panel-icon">ℹ️</span>
+          <span>Когда включён — бот автоматически запускает циклы фокуса (работа + перерыв) в рабочие часы. Помодоро в действии. Когда выключен — бот не беспокоит циклами.</span>
         </div>
-        <p className="hint" style={{ marginTop: 8 }}>
-          {parseInt(pomodoroWork) || '?'}мин работа → {parseInt(pomodoroShortBreak) || '?'}мин перерыв. Каждый {parseInt(pomodoroCycles) || '?'}-й — {parseInt(pomodoroLongBreak) || '?'}мин.
-        </p>
+        <label className="schedule-toggle" style={{ marginTop: 12 }}>
+          <input
+            type="checkbox"
+            checked={productiveMode}
+            onChange={(e) => setProductiveMode(e.target.checked)}
+          />
+          <span className="schedule-toggle-label">
+            {productiveMode ? '⚡ Режим включён' : '⚡ Режим выключен'}
+          </span>
+        </label>
       </div>
+
+      {productiveMode && (
+        <div className="settings-section card">
+          <h3>🍅 Помодоро-цикл</h3>
+          <div className="info-panel">
+            <span className="info-panel-icon">ℹ️</span>
+            <span>Классическая техника: работа без отвлечений, затем короткий отдых. После нескольких циклов — длинный перерыв для восстановления.</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+            <div>
+              <label className="label">Работа (мин)</label>
+              <input type="number" className="input" min={5} max={120} step={5} value={pomodoroWork} onChange={(e) => setPomodoroWork(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Короткий перерыв</label>
+              <input type="number" className="input" min={1} max={30} step={1} value={pomodoroShortBreak} onChange={(e) => setPomodoroShortBreak(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Длинный перерыв</label>
+              <input type="number" className="input" min={5} max={60} step={5} value={pomodoroLongBreak} onChange={(e) => setPomodoroLongBreak(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Циклов до длинного</label>
+              <input type="number" className="input" min={2} max={10} step={1} value={pomodoroCycles} onChange={(e) => setPomodoroCycles(e.target.value)} />
+            </div>
+          </div>
+          <p className="hint" style={{ marginTop: 8 }}>
+            {parseInt(pomodoroWork) || '?'}мин работа → {parseInt(pomodoroShortBreak) || '?'}мин перерыв. Каждый {parseInt(pomodoroCycles) || '?'}-й — {parseInt(pomodoroLongBreak) || '?'}мин.
+          </p>
+        </div>
+      )}
     </>
   )
 }
@@ -702,7 +711,7 @@ export default function Settings() {
   const tabs: { key: SettingsTab; label: string; icon: string }[] = [
     { key: 'general', label: 'Общее', icon: '⚙️' },
     { key: 'bot', label: 'Бот', icon: '🔔' },
-    { key: 'timer', label: 'Таймер', icon: '🍅' },
+    { key: 'productivity', label: 'Продуктивность', icon: '⚡' },
     { key: 'categories', label: 'Категории', icon: '📁' },
   ]
 
@@ -729,7 +738,7 @@ export default function Settings() {
       <div className="settings-tab-content">
         {activeTab === 'general' && <GeneralTab />}
         {activeTab === 'bot' && <BotTab />}
-        {activeTab === 'timer' && <TimerTab />}
+        {activeTab === 'productivity' && <ProductivityTab />}
         {activeTab === 'categories' && <CategoriesTab />}
       </div>
 

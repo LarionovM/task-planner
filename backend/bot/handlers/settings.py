@@ -22,6 +22,8 @@ from backend.db.crud.users import (
 from backend.db.crud.blocks import list_blocks_for_week, get_weekly_goals
 from backend.db.crud.tasks import list_categories, get_task
 from backend.db.models import AllowedUser
+from backend.bot.reminders import stop_spam_and_cleanup
+from backend.bot.scheduler import cancel_user_pomodoro_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +33,17 @@ router = Router()
 # === Главное меню /settings ===
 
 
-def _settings_main_keyboard(is_admin: bool = False, is_stopped: bool = False) -> InlineKeyboardMarkup:
+def _settings_main_keyboard(
+    is_admin: bool = False,
+    is_stopped: bool = False,
+    productive_mode: bool = False,
+) -> InlineKeyboardMarkup:
     """Основное меню настроек."""
     rows = []
+
+    # Режим продуктивной работы (помодоро-циклы)
+    productive_label = "⚡ Режим продуктивности: ВКЛ" if productive_mode else "⚡ Режим продуктивности: ВЫКЛ"
+    rows.append([InlineKeyboardButton(text=productive_label, callback_data="set:toggle_productive")])
 
     # Пауза / Стоп / Возобновить
     if is_stopped:
@@ -62,6 +72,7 @@ async def cmd_settings(message: Message, allowed_user: AllowedUser):
 
     is_stopped = getattr(user, 'reminders_stopped', False) or False
     paused_until = getattr(user, 'reminders_paused_until', None)
+    productive_mode = getattr(user, 'productive_mode_enabled', False) or False
 
     status_text = "✅ Активны"
     if is_stopped:
@@ -69,9 +80,11 @@ async def cmd_settings(message: Message, allowed_user: AllowedUser):
     elif paused_until and paused_until > datetime.now():
         status_text = f"⏸ Пауза до {paused_until.strftime('%H:%M')}"
 
+    productive_text = "ВКЛ ⚡" if productive_mode else "ВЫКЛ"
+
     text = (
         "⚙️ *Настройки*\n\n"
-        f"🍅 Помодоро: {user.pomodoro_work_min or 25}+{user.pomodoro_short_break_min or 5} мин\n"
+        f"⚡ Режим продуктивности: {productive_text}\n"
         f"🕐 Часовой пояс: `{user.timezone}`\n"
         f"📢 Напоминания: {status_text}\n\n"
         "Остальные настройки — в Web App (кнопка в /start)"
@@ -79,7 +92,7 @@ async def cmd_settings(message: Message, allowed_user: AllowedUser):
 
     await message.answer(
         text,
-        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped),
+        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped, productive_mode),
         parse_mode="Markdown",
     )
 
@@ -144,6 +157,10 @@ async def cb_pause_select(callback: CallbackQuery, allowed_user: AllowedUser):
         )
         await session.commit()
 
+    # Останавливаем активный спам и отменяем помодоро-jobs
+    await stop_spam_and_cleanup(allowed_user.telegram_id)
+    cancel_user_pomodoro_jobs(allowed_user.telegram_id)
+
     await callback.message.edit_text(
         f"⏸ Напоминания на паузе до *{until.strftime('%H:%M')}*\n"
         f"Зайди в /settings чтобы возобновить раньше.",
@@ -165,6 +182,10 @@ async def cb_stop(callback: CallbackQuery, allowed_user: AllowedUser):
             reminders_paused_until=None,
         )
         await session.commit()
+
+    # Останавливаем активный спам и отменяем помодоро-jobs
+    await stop_spam_and_cleanup(allowed_user.telegram_id)
+    cancel_user_pomodoro_jobs(allowed_user.telegram_id)
 
     await callback.message.edit_text(
         "⏹ Напоминания *остановлены*.\n"
@@ -210,9 +231,12 @@ async def cb_back(callback: CallbackQuery, allowed_user: AllowedUser):
     elif paused_until and paused_until > datetime.now():
         status_text = f"⏸ Пауза до {paused_until.strftime('%H:%M')}"
 
+    productive_mode = getattr(user, 'productive_mode_enabled', False) or False
+    productive_text = "ВКЛ ⚡" if productive_mode else "ВЫКЛ"
+
     text = (
         "⚙️ *Настройки*\n\n"
-        f"🍅 Помодоро: {user.pomodoro_work_min or 25}+{user.pomodoro_short_break_min or 5} мин\n"
+        f"⚡ Режим продуктивности: {productive_text}\n"
         f"🕐 Часовой пояс: `{user.timezone}`\n"
         f"📢 Напоминания: {status_text}\n\n"
         "Остальные настройки — в Web App (кнопка в /start)"
@@ -220,7 +244,40 @@ async def cb_back(callback: CallbackQuery, allowed_user: AllowedUser):
 
     await callback.message.edit_text(
         text,
-        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped),
+        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped, productive_mode),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+# === Режим продуктивности ===
+
+
+@router.callback_query(F.data == "set:toggle_productive")
+async def cb_toggle_productive(callback: CallbackQuery, allowed_user: AllowedUser):
+    """Переключить режим продуктивной работы (помодоро-циклы)."""
+    async with async_session() as session:
+        user = await get_or_create_user(session, allowed_user.telegram_id)
+        current = getattr(user, 'productive_mode_enabled', False) or False
+        new_value = not current
+        await update_user_settings(session, allowed_user.telegram_id, productive_mode_enabled=new_value)
+        await session.commit()
+
+    if new_value:
+        # Включили — запускаем помодоро-цикл на сегодня
+        from backend.bot.scheduler import schedule_pomodoro_cycle
+        user_tz = user.timezone or "Europe/Moscow"
+        await schedule_pomodoro_cycle(allowed_user.telegram_id, user_tz)
+        answer_text = "⚡ Режим продуктивности *включён*! Циклы фокуса запланированы."
+    else:
+        # Выключили — отменяем помодоро-jobs
+        cancel_user_pomodoro_jobs(allowed_user.telegram_id)
+        answer_text = "⚡ Режим продуктивности *выключен*. Циклы фокуса остановлены."
+
+    is_stopped = getattr(user, 'reminders_stopped', False) or False
+    await callback.message.edit_text(
+        answer_text,
+        reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped, new_value),
         parse_mode="Markdown",
     )
     await callback.answer()

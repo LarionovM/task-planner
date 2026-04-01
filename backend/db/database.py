@@ -101,6 +101,11 @@ async def init_db() -> None:
             "ALTER TABLE tasks ADD COLUMN spam_enabled BOOLEAN DEFAULT 1",
 
 
+            # === v1.6.0 — режим продуктивности + повторяемые задачи со временем ===
+            "ALTER TABLE users ADD COLUMN productive_mode_enabled BOOLEAN DEFAULT 0",
+            "ALTER TABLE tasks ADD COLUMN recur_time TIME",
+            "ALTER TABLE tasks ADD COLUMN recur_duration_min INTEGER",
+
             # Таблица уведомлений о версиях (v1.2.0)
             """CREATE TABLE IF NOT EXISTS version_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

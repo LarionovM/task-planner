@@ -64,6 +64,9 @@ class User(Base):
     pomodoro_long_break_min = Column(Integer, default=30, nullable=False)
     pomodoro_cycles_before_long = Column(Integer, default=4, nullable=False)
 
+    # Режим продуктивной работы (помодоро-циклы)
+    productive_mode_enabled = Column(Boolean, default=False, nullable=False)
+
     # Пауза напоминаний
     reminders_paused_until = Column(DateTime, nullable=True)
     reminders_stopped = Column(Boolean, default=False, nullable=False)
@@ -159,6 +162,8 @@ class Task(Base):
     # Повторяемость
     is_recurring = Column(Boolean, default=False, nullable=False)
     recur_days = Column(JSON, default=list)  # [0..6]
+    recur_time = Column(Time, nullable=True)          # время в которое задача авто-кладётся в слот
+    recur_duration_min = Column(Integer, nullable=True)  # длительность слота для авто-планирования
 
     # Назначенная дата (день, без конкретного времени)
     scheduled_date = Column(Date, nullable=True, index=True)

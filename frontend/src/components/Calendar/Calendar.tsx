@@ -112,13 +112,20 @@ export default function Calendar() {
     return map
   }, [events, weekDays])
 
-  // Задачи назначенные на конкретные дни
+  // Задачи по дням — scheduled + повторяемые по дню недели
   const tasksByDay = useMemo(() => {
     const map: Record<string, Task[]> = {}
     weekDays.forEach((d) => (map[d] = []))
     tasks.forEach((t) => {
-      if (t.scheduled_date && map[t.scheduled_date] && t.status !== 'done') {
+      if (t.is_epic || t.status === 'done') return
+      if (t.scheduled_date && map[t.scheduled_date]) {
         map[t.scheduled_date].push(t)
+      } else if (t.is_recurring && t.recur_days && t.recur_days.length > 0) {
+        weekDays.forEach((day, i) => {
+          if (t.recur_days.includes(i)) {
+            map[day].push(t)
+          }
+        })
       }
     })
     return map
@@ -268,9 +275,9 @@ export default function Calendar() {
     }
   }
 
-  // Незапланированные задачи для диалога назначения
+  // Незапланированные задачи для диалога назначения (не регулярные — у них своё расписание)
   const unscheduledTasks = useMemo(
-    () => tasks.filter((t) => !t.is_epic && !t.scheduled_date && t.status !== 'done'),
+    () => tasks.filter((t) => !t.is_epic && !t.scheduled_date && !t.is_recurring && t.status !== 'done'),
     [tasks]
   )
 
@@ -320,18 +327,27 @@ export default function Calendar() {
           )}
         </div>
         <div className="calendar-actions">
-          <button
-            className={`btn btn-sm ${viewMode === 'day' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setViewMode(viewMode === 'week' ? 'day' : 'week')}
-            title={viewMode === 'week' ? 'Дневной вид' : 'Недельный вид'}
-          >
-            {viewMode === 'week' ? '📅' : '📆'}
-          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => setShowBacklog(!showBacklog)} title="Панель задач для перетаскивания">
             {showBacklog ? '✕' : '📋'}
           </button>
           <ThemeToggle />
         </div>
+      </div>
+
+      {/* Вкладки Неделя / День */}
+      <div className="calendar-view-tabs">
+        <button
+          className={`calendar-view-tab ${viewMode === 'week' ? 'active' : ''}`}
+          onClick={() => setViewMode('week')}
+        >
+          📆 Неделя
+        </button>
+        <button
+          className={`calendar-view-tab ${viewMode === 'day' ? 'active' : ''}`}
+          onClick={() => setViewMode('day')}
+        >
+          📅 День
+        </button>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={hybridCollision} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -377,6 +393,7 @@ export default function Calendar() {
                     onUnscheduleTask={handleUnscheduleTask}
                     onTaskStatusChange={handleTaskStatusChange}
                     onAssignTask={handleAssignTask}
+                    hideDayTasks={true}
                   />
                 ))}
               </div>

@@ -18,6 +18,7 @@ class UserResponse(BaseModel):
     pomodoro_cycles_before_long: int = 4
     reminders_paused_until: datetime | None = None
     reminders_stopped: bool = False
+    productive_mode_enabled: bool = False
     is_admin: bool = False
     is_active: bool = True
     created_at: datetime | None = None
@@ -33,6 +34,7 @@ class UserSettingsUpdate(BaseModel):
     pomodoro_short_break_min: int | None = None
     pomodoro_long_break_min: int | None = None
     pomodoro_cycles_before_long: int | None = None
+    productive_mode_enabled: bool | None = None
 
 
 class SpamConfigResponse(BaseModel):
@@ -106,6 +108,8 @@ class TaskCreate(BaseModel):
     link: str | None = None
     is_recurring: bool = False
     recur_days: list[int] = Field(default_factory=list)
+    recur_time: str | None = None       # HH:MM — время авто-слота для регулярных задач
+    recur_duration_min: int | None = None  # длительность авто-слота
     scheduled_date: date | None = None
     deadline: date | None = None
     tags: list[str] = Field(default_factory=list)
@@ -134,6 +138,8 @@ class TaskUpdate(BaseModel):
     link: str | None = None
     is_recurring: bool | None = None
     recur_days: list[int] | None = None
+    recur_time: str | None = None
+    recur_duration_min: int | None = None
     scheduled_date: date | None = None
     deadline: date | None = None
     tags: list[str] | None = None
@@ -164,6 +170,8 @@ class TaskResponse(BaseModel):
     link: str | None = None
     is_recurring: bool
     recur_days: list[int]
+    recur_time: str | None = None
+    recur_duration_min: int | None = None
     scheduled_date: date | None = None
     deadline: date | None
     tags: list[str]

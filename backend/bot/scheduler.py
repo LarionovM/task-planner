@@ -107,11 +107,25 @@ def cancel_event_jobs(event_id: int) -> None:
 # === Помодоро-циклы ===
 
 
+def cancel_user_pomodoro_jobs(user_id: int) -> None:
+    """Отменяет все помодоро-jobs пользователя (при стопе/паузе напоминаний)."""
+    prefix = f"_{user_id}_"
+    to_remove = [job.id for job in scheduler.get_jobs() if job.id and prefix in job.id]
+    for job_id in to_remove:
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:
+            pass
+    if to_remove:
+        logger.info(f"Отменено {len(to_remove)} помодоро-jobs для user={user_id}")
+
+
 async def schedule_pomodoro_cycle(user_id: int, user_tz: str = "Europe/Moscow") -> None:
     """Планирует весь день помодоро-циклов для пользователя.
 
     Циклы: 25 мин работа → 5 мин перерыв → 25 мин → 5 мин → ... → 25 мин → 30 мин (длинный перерыв).
     Помодоро не отправляется во время активных событий (проверяется в reminders.py).
+    Не запускается если productive_mode_enabled = False.
     """
     from backend.bot.reminders import send_pomodoro_start, send_pomodoro_break, send_pomodoro_end_questionnaire, _no_tasks_notified
 
@@ -121,6 +135,11 @@ async def schedule_pomodoro_cycle(user_id: int, user_tz: str = "Europe/Moscow") 
     async with async_session() as session:
         user = await get_or_create_user(session, user_id)
         schedule = await get_weekly_schedule(session, user_id)
+
+    # Проверяем: включён ли режим продуктивной работы
+    if not getattr(user, 'productive_mode_enabled', False):
+        logger.debug(f"Помодоро для user={user_id}: режим продуктивной работы выключен")
+        return
 
     tz = ZoneInfo(user_tz)
     now = datetime.now(tz)
