@@ -100,6 +100,7 @@ async def init_db() -> None:
             # Tasks: spam_enabled (мог отсутствовать в ранних версиях)
             "ALTER TABLE tasks ADD COLUMN spam_enabled BOOLEAN DEFAULT 1",
 
+
             # Таблица уведомлений о версиях (v1.2.0)
             """CREATE TABLE IF NOT EXISTS version_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

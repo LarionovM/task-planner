@@ -489,10 +489,15 @@ function SortableCategory({
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
   return (
-    <div ref={setNodeRef} style={style} className="cat-item card">
-      <div className="cat-drag" {...attributes} {...listeners}>☰</div>
+    <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px' }} className="cat-item card">
+      <div
+        className="cat-drag"
+        {...attributes}
+        {...listeners}
+        style={{ cursor: 'grab', color: 'var(--text-muted)', fontSize: 16, flexShrink: 0, lineHeight: 1, paddingTop: 2 }}
+      >☰</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
           <span style={{ fontSize: 16 }}>{cat.emoji || '📁'}</span>
           <span style={{ fontSize: 13, fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
           <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, minWidth: 28, textAlign: 'right' }}>{goal}ч</span>
