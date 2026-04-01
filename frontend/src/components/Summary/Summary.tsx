@@ -218,8 +218,8 @@ export default function Summary() {
                       outerRadius={80}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) =>
-                        percent > 0.08 ? `${Math.round(percent * 100)}%` : ''
+                      label={({ percent }: { percent?: number }) =>
+                        (percent ?? 0) > 0.08 ? `${Math.round((percent ?? 0) * 100)}%` : ''
                       }
                       labelLine={false}
                     >
@@ -228,7 +228,7 @@ export default function Summary() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(v: number) => fmtMin(v)}
+                      formatter={(v: number | string) => fmtMin(Number(v))}
                       contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
                     />
                     <Legend
