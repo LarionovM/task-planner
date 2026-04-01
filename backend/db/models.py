@@ -145,9 +145,7 @@ class Task(Base):
     use_pomodoro = Column(Boolean, nullable=True, default=False)
     allow_grouping = Column(Boolean, nullable=True, default=True)
     reminder_before_min = Column(Integer, nullable=True, default=5)
-    allow_multi_per_block = Column(Boolean, nullable=True, default=False)
-    preferred_time = Column(String(5), nullable=True)   # HH:MM, устарело
-    device_type = Column(String(20), nullable=True, default="other")  # устарело
+    # allow_multi_per_block, preferred_time, device_type — удалены из БД миграцией v1.5.1
 
     # Прогнозируемое время (минуты) — одно поле вместо minimal + estimated
     estimated_time_min = Column(Integer, nullable=True)

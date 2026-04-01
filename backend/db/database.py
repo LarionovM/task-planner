@@ -115,10 +115,24 @@ async def init_db() -> None:
                 await conn.execute(text(sql))
                 logger.info(f"Миграция: {sql}")
             except Exception:
-                pass  # Колонка уже существует
+                pass  # Колонка уже существует / не нужна
 
-        # Удаляем ненужные колонки из spam_config (SQLite не поддерживает DROP COLUMN до 3.35)
-        # Оставим их — просто не используем
+        # === v1.5.1 — удаляем устаревшие колонки (SQLite 3.35+) ===
+        # Эти колонки были в старых версиях модели, потом убраны из кода,
+        # но остались в БД как NOT NULL — что ломало INSERT.
+        drop_columns = [
+            "ALTER TABLE tasks DROP COLUMN preferred_time",
+            "ALTER TABLE tasks DROP COLUMN allow_multi_per_block",
+            "ALTER TABLE tasks DROP COLUMN device_type",
+            "ALTER TABLE spam_config DROP COLUMN empty_slots_enabled",
+            "ALTER TABLE spam_config DROP COLUMN empty_slots_interval_min",
+        ]
+        for sql in drop_columns:
+            try:
+                await conn.execute(text(sql))
+                logger.info(f"Миграция (drop): {sql}")
+            except Exception:
+                pass  # Уже удалена / SQLite < 3.35 / колонки не существует
 
     logger.info("База данных инициализирована")
 

@@ -283,8 +283,6 @@ async def create_task(
         "use_pomodoro": False,
         "allow_grouping": True,
         "reminder_before_min": 5,
-        "allow_multi_per_block": False,
-        "device_type": "other",
     }
     for field, default in _old_schema_defaults.items():
         if kwargs.get(field) is None:
