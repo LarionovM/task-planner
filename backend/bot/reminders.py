@@ -40,8 +40,11 @@ logger = logging.getLogger(__name__)
 # {user_id: list[message_id]} — для удаления при ответе
 _spam_messages: dict[int, list[int]] = {}
 
-# {user_id: asyncio.Task} — активные спам-таски
+# {user_id: asyncio.Task} — активные спам-таски (для опросника завершения)
 _spam_tasks: dict[int, asyncio.Task] = {}
+
+# {user_id: asyncio.Task} — спам-таски для игнора выбора задачи в помодоро
+_pomo_pick_spam_tasks: dict[int, asyncio.Task] = {}
 
 # Пользователи, которым уже отправлялось "нет задач" сегодня
 # Сбрасывается при планировании нового дня (schedule_pomodoro_cycle)
@@ -203,11 +206,23 @@ async def send_pomodoro_start(user_id: int, pomodoro_number: int) -> None:
             f"Какую задачу берёшь?"
         )
 
-        await bot.send_message(
+        msg = await bot.send_message(
             user_id, text,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
             parse_mode="Markdown",
         )
+
+        # Запускаем спам если пользователь игнорирует выбор задачи
+        async with async_session() as session:
+            spam_config = await get_spam_config(session, user_id)
+        if spam_config and spam_config.enabled:
+            loop = asyncio.get_event_loop()
+            loop.call_later(
+                SPAM_QUESTIONNAIRE_TIMEOUT_SEC,
+                lambda uid=user_id, sc=spam_config: asyncio.ensure_future(
+                    _maybe_start_pomo_pick_spam(uid, sc)
+                ),
+            )
     else:
         # Нет задач — после первого уведомления больше не спамим
         if user_id in _no_tasks_notified:
@@ -516,6 +531,52 @@ async def _maybe_start_spam(user_id: int, block_id: int, questionnaire_msg_id: i
 
     # Запускаем спам
     await _start_spam_loop(user_id, block_id, spam_config, SPAM_TEXTS)
+
+
+async def _maybe_start_pomo_pick_spam(user_id: int, spam_config) -> None:
+    """Спам если пользователь проигнорировал выбор задачи в помодоро."""
+    # Если спам уже отменён (пользователь нажал кнопку) — ничего не делаем
+    if user_id not in _pomo_pick_spam_tasks and user_id not in _spam_tasks:
+        pass  # продолжаем
+
+    from backend.bot.scheduler import get_bot
+    async with async_session() as session:
+        user = await get_or_create_user(session, user_id)
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
+        now = datetime.now(tz)
+        schedule = await get_weekly_schedule(session, user_id)
+        if not _is_in_working_hours(now.time(), schedule, now.weekday()):
+            return
+
+    bot = get_bot()
+    interval = spam_config.initial_interval_sec
+    texts = ["🍅 Ты выбрал задачу?", "Помодоро ждёт! 👀", "Выбери задачу или нажми «Без задачи»",
+             "tick tock... ⏰", "эй, не пропусти помодоро 🍅"]
+    text_idx = 0
+
+    async def spam_loop():
+        nonlocal interval, text_idx
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                msg = await bot.send_message(user_id, texts[text_idx % len(texts)])
+                _spam_messages.setdefault(user_id, []).append(msg.message_id)
+            except Exception:
+                break
+            text_idx += 1
+            interval = min(interval * spam_config.multiplier, spam_config.max_interval_sec)
+
+    if user_id in _pomo_pick_spam_tasks:
+        _pomo_pick_spam_tasks[user_id].cancel()
+    task = asyncio.ensure_future(spam_loop())
+    _pomo_pick_spam_tasks[user_id] = task
+
+
+def stop_pomo_pick_spam(user_id: int) -> None:
+    """Останавливает спам выбора задачи при нажатии любой кнопки помодоро."""
+    if user_id in _pomo_pick_spam_tasks:
+        _pomo_pick_spam_tasks[user_id].cancel()
+        del _pomo_pick_spam_tasks[user_id]
 
 
 async def _maybe_start_event_spam(user_id: int, event_id: int, msg_id: int) -> None:

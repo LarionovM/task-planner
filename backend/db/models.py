@@ -241,9 +241,13 @@ class TaskBlock(Base):
     # Привязка к задаче (может быть null — помодоро без задачи)
     task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
 
-    # Совместимость со старой схемой БД: task_ids NOT NULL (массив задач из v1.0)
-    # Сейчас не используется логикой, но нужен чтобы INSERT не падал
-    task_ids = Column(JSON, nullable=True, default=list)
+    # Совместимость со старой схемой БД (v1.0 — колонки NOT NULL без DEFAULT):
+    task_ids = Column(JSON, nullable=True, default=list)          # task_ids NOT NULL
+    duration_type = Column(String(10), nullable=True, default="fixed")  # duration_type NOT NULL
+    is_mixed = Column(Boolean, nullable=True, default=False)      # is_mixed NOT NULL
+    min_duration_min = Column(Integer, nullable=True)             # опциональная
+    max_duration_min = Column(Integer, nullable=True)             # опциональная
+    block_name = Column(String(500), nullable=True)               # опциональная
 
     # День и время
     day = Column(Date, nullable=False, index=True)

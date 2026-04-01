@@ -18,6 +18,7 @@ from backend.db.database import async_session
 from backend.db.crud.blocks import get_block, create_log
 from backend.db.crud.tasks import get_task, get_tasks_for_today, update_task
 from backend.db.models import AllowedUser, TaskBlock, Event
+from backend.bot.reminders import stop_pomo_pick_spam, stop_spam_and_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class ReasonStates(StatesGroup):
 @router.callback_query(F.data.startswith("pomo:task:"))
 async def cb_pomo_select_task(callback: CallbackQuery, allowed_user: AllowedUser):
     """Пользователь выбрал задачу для помодоро."""
+    stop_pomo_pick_spam(allowed_user.telegram_id)
     try:
         parts = callback.data.split(":")
         task_id = int(parts[2])
@@ -104,12 +106,13 @@ async def cb_pomo_select_task(callback: CallbackQuery, allowed_user: AllowedUser
         await callback.answer()
     except Exception as e:
         logger.error(f"Ошибка в cb_pomo_select_task: {e}", exc_info=True)
-        await callback.answer(f"Ошибка: {e}", show_alert=True)
+        await callback.answer(str(e)[:190], show_alert=True)
 
 
 @router.callback_query(F.data.startswith("pomo:notask:"))
 async def cb_pomo_no_task(callback: CallbackQuery, allowed_user: AllowedUser):
     """Помодоро без привязки к задаче."""
+    stop_pomo_pick_spam(allowed_user.telegram_id)
     try:
         pomo_number = int(callback.data.split(":")[2])
 
@@ -157,6 +160,7 @@ async def cb_pomo_no_task(callback: CallbackQuery, allowed_user: AllowedUser):
 @router.callback_query(F.data.startswith("pomo:skip:"))
 async def cb_pomo_skip(callback: CallbackQuery, allowed_user: AllowedUser):
     """Пропуск помодоро."""
+    stop_pomo_pick_spam(allowed_user.telegram_id)
     try:
         pomo_number = int(callback.data.split(":")[2])
 
