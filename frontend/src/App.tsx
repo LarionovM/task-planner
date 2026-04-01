@@ -74,19 +74,16 @@ function App() {
       case 'timezone':
         return <TimezoneSelect />
       case 'categories':
-        return <Categories />
       case 'schedule':
-        return <WeekSchedule />
       case 'goals':
-        return <Goals />
+      case 'settings':
+        return <Settings />
       case 'backlog':
         return <Backlog />
       case 'calendar':
         return <Calendar />
       case 'summary':
         return <Summary />
-      case 'settings':
-        return <Settings />
       default:
         return <Calendar />
     }

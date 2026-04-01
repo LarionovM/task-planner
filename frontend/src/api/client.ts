@@ -163,4 +163,6 @@ export const api = {
   // === Stats ===
   getWeekStats: (weekStart: string) =>
     request<any>(`/stats/week?week_start=${weekStart}`),
+  getPeriodStats: (period: string, refDate: string) =>
+    request<any>(`/stats/period?period=${period}&ref_date=${refDate}`),
 }

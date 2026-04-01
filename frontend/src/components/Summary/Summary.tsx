@@ -1,203 +1,319 @@
-// Экран 6: Саммари — статистика за неделю + графики
+// Экран 6: Саммари — аналитика по периодам с recharts (v1.4.0)
 
 import { useState, useEffect } from 'react'
-import { useStore } from '../../store'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from 'recharts'
 import { api } from '../../api/client'
-import type { WeekStats } from '../../types'
+import type { PeriodStatsResponse } from '../../types'
 import ThemeToggle from '../ThemeToggle'
 import './Summary.css'
 
+type Period = 'day' | 'week' | 'month'
+
+const PERIOD_LABELS: Record<Period, string> = {
+  day: 'День',
+  week: 'Неделя',
+  month: 'Месяц',
+}
+
+// Цвета для pie-chart по категориям (циклически)
+const CAT_COLORS = [
+  '#6C63FF', '#FF6B6B', '#4ECDC4', '#FFD93D',
+  '#95E1D3', '#F38181', '#AA96DA', '#FCBAD3',
+]
+
+function fmtMin(min: number): string {
+  if (min < 60) return `${min}м`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m > 0 ? `${h}ч ${m}м` : `${h}ч`
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+// Форматирование дня для оси X
+function fmtDay(dateStr: string, period: Period): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  if (period === 'day') return dateStr
+  if (period === 'week') {
+    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+    return days[d.getDay() === 0 ? 6 : d.getDay() - 1]
+  }
+  // month — день месяца
+  return String(d.getDate())
+}
+
 export default function Summary() {
-  const { weekStart } = useStore()
-  const [stats, setStats] = useState<WeekStats | null>(null)
+  const [period, setPeriod] = useState<Period>('week')
+  const [refDate, setRefDate] = useState(todayStr())
+  const [stats, setStats] = useState<PeriodStatsResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadStats()
-  }, [weekStart])
+  }, [period, refDate])
 
   const loadStats = async () => {
     setLoading(true)
+    setError(null)
     try {
-      const data = await api.getWeekStats(weekStart)
+      const data = await api.getPeriodStats(period, refDate)
       setStats(data)
-    } catch (e) {
-      console.error('Error loading stats:', e)
+    } catch (e: any) {
+      setError(e.message || 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
   }
 
-  // Кнопка «Сохранить и запустить»
-  const handleSaveAndStart = async () => {
-    setSaving(true)
-    try {
-      // POST к save-plan (если эндпоинт существует)
-      alert('✅ План сохранён! Бот начнёт присылать напоминания.')
-    } finally {
-      setSaving(false)
-    }
+  // Навигация периодов
+  const navigate = (dir: -1 | 1) => {
+    const d = new Date(refDate + 'T00:00:00')
+    if (period === 'day') d.setDate(d.getDate() + dir)
+    else if (period === 'week') d.setDate(d.getDate() + dir * 7)
+    else d.setMonth(d.getMonth() + dir)
+    setRefDate(d.toISOString().slice(0, 10))
   }
 
-  if (loading) {
-    return (
-      <div className="summary-screen">
-        <div className="header">
-          <h1>📊 Итоги</h1>
-        </div>
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-          Загрузка...
-        </div>
-      </div>
-    )
+  const periodLabel = (): string => {
+    if (!stats) return ''
+    if (stats.date_from === stats.date_to) return stats.date_from
+    return `${stats.date_from} — ${stats.date_to}`
   }
 
-  if (!stats) {
-    return (
-      <div className="summary-screen">
-        <div className="header">
-          <h1>📊 Итоги</h1>
-        </div>
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-          Нет данных. Создайте блоки в календаре.
-        </div>
-      </div>
-    )
-  }
+  // Данные для bar-chart
+  const barData = stats?.by_day.map((d) => ({
+    name: fmtDay(d.date, period),
+    Выполнено: d.pomodoros_done,
+    Всего: d.pomodoros_total - d.pomodoros_done,
+  })) ?? []
 
-  // Максимальные значения для визуализации баров
-  const maxCatTime = Math.max(
-    ...stats.categories.map((c) => Math.max(c.planned_min, c.target_hours * 60)),
-    60
-  )
+  // Данные для pie-chart (только категории с временем > 0)
+  const pieData = stats?.categories
+    .filter((c) => c.actual_min > 0)
+    .map((c) => ({
+      name: `${c.category_emoji || ''} ${c.category_name}`,
+      value: c.actual_min,
+    })) ?? []
 
   return (
     <div className="summary-screen">
       <div className="header">
-        <h1>📊 Итоги</h1>
+        <h1>📊 Аналитика</h1>
         <ThemeToggle />
       </div>
 
-      {/* Помодоро-статистика */}
-      <div className="summary-overview">
-        <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.pomodoros_total}</span>
-          <span className="summary-stat-label">🍅 Помодоро</span>
-        </div>
-        <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.pomodoros_done}</span>
-          <span className="summary-stat-label">✅ Выполнено</span>
-        </div>
-        <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.pomodoros_partial}</span>
-          <span className="summary-stat-label">⚡ Частично</span>
-        </div>
-        <div className="summary-stat card">
-          <span className="summary-stat-value">{stats.pomodoros_failed}</span>
-          <span className="summary-stat-label">❌ Провалено</span>
-        </div>
+      {/* Переключатель периода */}
+      <div className="summary-period-tabs">
+        {(['day', 'week', 'month'] as Period[]).map((p) => (
+          <button
+            key={p}
+            className={`summary-period-tab ${period === p ? 'active' : ''}`}
+            onClick={() => { setPeriod(p); setRefDate(todayStr()) }}
+          >
+            {PERIOD_LABELS[p]}
+          </button>
+        ))}
       </div>
 
-      {/* Задачи */}
-      {(stats.tasks_total > 0) && (
-        <div className="summary-overview" style={{ marginTop: 8 }}>
-          <div className="summary-stat card">
-            <span className="summary-stat-value">{stats.tasks_total}</span>
-            <span className="summary-stat-label">📋 Задач</span>
-          </div>
-          <div className="summary-stat card">
-            <span className="summary-stat-value">{stats.tasks_done}</span>
-            <span className="summary-stat-label">✅ Завершено</span>
-          </div>
-          <div className="summary-stat card">
-            <span className="summary-stat-value">{stats.tasks_in_progress}</span>
-            <span className="summary-stat-label">🔵 В работе</span>
-          </div>
+      {/* Навигация */}
+      <div className="summary-nav">
+        <button className="summary-nav-btn" onClick={() => navigate(-1)}>‹</button>
+        <span className="summary-nav-label">{periodLabel()}</span>
+        <button className="summary-nav-btn" onClick={() => navigate(1)}>›</button>
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+          Загрузка...
         </div>
       )}
 
-      {/* Время */}
-      <div className="summary-time card" style={{ marginTop: 12 }}>
-        <div className="summary-time-row">
-          <span>Запланировано:</span>
-          <strong>{Math.round(stats.total_planned_min / 60)}ч {stats.total_planned_min % 60}мин</strong>
-        </div>
-        <div className="summary-time-row">
-          <span>Фактически:</span>
-          <strong>{Math.round(stats.total_actual_min / 60)}ч {stats.total_actual_min % 60}мин</strong>
-        </div>
-        <div className="summary-time-row">
-          <span>Свободное время:</span>
-          <strong>{Math.round(stats.free_time_min / 60)}ч {stats.free_time_min % 60}мин</strong>
-        </div>
-      </div>
-
-      {/* Предупреждения */}
-      {stats.overload_percent > 90 && (
-        <div className="summary-warning card" style={{ marginTop: 12 }}>
-          ⚠️ Загрузка {stats.overload_percent}% — возможна перегрузка!
+      {error && (
+        <div style={{ textAlign: 'center', padding: 20, color: 'var(--danger)' }}>
+          {error}
         </div>
       )}
 
-      {stats.upcoming_deadlines?.length > 0 && (
-        <div className="summary-deadlines card" style={{ marginTop: 12 }}>
-          <h3 style={{ fontSize: 14, marginBottom: 8 }}>📅 Дедлайны на этой неделе</h3>
-          {stats.upcoming_deadlines.map((d) => (
-            <div key={d.task_id} className="summary-deadline-item">
-              <span>{d.task_name}</span>
-              <span className="summary-deadline-date">{d.deadline}</span>
+      {!loading && !error && stats && (
+        <>
+          {/* Карточки помодоро */}
+          <div className="summary-cards">
+            <div className="summary-card card">
+              <span className="summary-card-value">{stats.pomodoros_done}</span>
+              <span className="summary-card-label">✅ Выполнено</span>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="summary-card card">
+              <span className="summary-card-value">{stats.pomodoros_partial}</span>
+              <span className="summary-card-label">⚡ Частично</span>
+            </div>
+            <div className="summary-card card">
+              <span className="summary-card-value">{stats.pomodoros_failed}</span>
+              <span className="summary-card-label">❌ Провалено</span>
+            </div>
+            <div className="summary-card card">
+              <span className="summary-card-value">{stats.pomodoros_skipped}</span>
+              <span className="summary-card-label">⏭ Пропущено</span>
+            </div>
+          </div>
 
-      {/* По категориям — бары */}
-      <div style={{ marginTop: 16 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 8 }}>📁 По категориям: план vs цель</h3>
-        <div className="summary-cats">
-          {stats.categories.map((catStat) => {
-            const plannedH = Math.round(catStat.planned_min / 6) / 10
-            const targetH = catStat.target_hours
-            const plannedPercent = maxCatTime > 0 ? (catStat.planned_min / maxCatTime) * 100 : 0
-            const targetPercent = maxCatTime > 0 ? (targetH * 60 / maxCatTime) * 100 : 0
-            const isGoalMet = targetH > 0 && catStat.planned_min >= targetH * 60
+          {/* Дополнительные метрики */}
+          <div className="summary-metrics card">
+            <div className="summary-metric-row">
+              <span>⏱ Суммарный фокус</span>
+              <strong>{fmtMin(stats.focus_min)}</strong>
+            </div>
+            <div className="summary-metric-row">
+              <span>🔥 Стрик</span>
+              <strong>{stats.streak_days} дн.</strong>
+            </div>
+            <div className="summary-metric-row">
+              <span>📈 Среднее в день</span>
+              <strong>{stats.avg_per_day} помодоро</strong>
+            </div>
+            <div className="summary-metric-row">
+              <span>🍅 Всего помодоро</span>
+              <strong>{stats.pomodoros_total}</strong>
+            </div>
+          </div>
 
-            return (
-              <div key={catStat.category_id} className="summary-cat card">
-                <div className="summary-cat-header">
-                  <span>{catStat.category_emoji || '📁'} {catStat.category_name}</span>
-                  <span className="summary-cat-time">
-                    {plannedH}ч / {targetH}ч
-                    {isGoalMet && ' ✅'}
-                  </span>
-                </div>
-                <div className="summary-bar-container">
-                  <div
-                    className="summary-bar summary-bar-plan"
-                    style={{ width: `${Math.min(plannedPercent, 100)}%` }}
-                  />
-                  {targetH > 0 && (
-                    <div
-                      className="summary-bar-target"
-                      style={{ left: `${Math.min(targetPercent, 100)}%` }}
+          {/* Bar chart — помодоро по дням */}
+          {barData.length > 1 && (
+            <div className="summary-section">
+              <h3 className="summary-section-title">📅 По дням</h3>
+              <div className="summary-chart-wrap">
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={barData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                      labelStyle={{ color: 'var(--text-primary)' }}
                     />
-                  )}
+                    <Bar dataKey="Выполнено" stackId="a" fill="var(--success)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Всего" stackId="a" fill="var(--bg-input)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Pie chart — по категориям */}
+          {pieData.length > 0 && (
+            <div className="summary-section">
+              <h3 className="summary-section-title">📁 По категориям</h3>
+              <div className="summary-chart-wrap">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="45%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) =>
+                        percent > 0.08 ? `${Math.round(percent * 100)}%` : ''
+                      }
+                      labelLine={false}
+                    >
+                      {pieData.map((_, i) => (
+                        <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number) => fmtMin(v)}
+                      contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                    />
+                    <Legend
+                      iconSize={10}
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Детализация по категориям */}
+              <div className="summary-cat-list">
+                {stats.categories
+                  .filter((c) => c.actual_min > 0)
+                  .sort((a, b) => b.actual_min - a.actual_min)
+                  .map((c, i) => {
+                    const goalMin = c.target_hours * 60
+                    const pct = goalMin > 0 ? Math.min(100, Math.round(c.actual_min / goalMin * 100)) : null
+                    return (
+                      <div key={c.category_id} className="summary-cat-row">
+                        <span
+                          className="summary-cat-dot"
+                          style={{ background: CAT_COLORS[i % CAT_COLORS.length] }}
+                        />
+                        <span className="summary-cat-name">
+                          {c.category_emoji || '📁'} {c.category_name}
+                        </span>
+                        <span className="summary-cat-actual">{fmtMin(c.actual_min)}</span>
+                        {pct !== null && (
+                          <span className={`summary-cat-pct ${pct >= 100 ? 'met' : ''}`}>
+                            {pct}% {pct >= 100 ? '✅' : `/ цель ${c.target_hours}ч`}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Задачи */}
+          {stats.tasks_total > 0 && (
+            <div className="summary-section">
+              <h3 className="summary-section-title">📋 Задачи</h3>
+              <div className="summary-metrics card">
+                <div className="summary-metric-row">
+                  <span>Всего задач</span>
+                  <strong>{stats.tasks_total}</strong>
+                </div>
+                <div className="summary-metric-row">
+                  <span>✅ Завершено</span>
+                  <strong>{stats.tasks_done}</strong>
+                </div>
+                <div className="summary-metric-row">
+                  <span>🔵 В работе</span>
+                  <strong>{stats.tasks_in_progress}</strong>
                 </div>
               </div>
-            )
-          })}
-        </div>
-      </div>
+            </div>
+          )}
 
-      {/* Кнопка */}
-      <button
-        className="btn btn-primary summary-save-btn"
-        onClick={handleSaveAndStart}
-        disabled={saving}
-      >
-        {saving ? '...' : '🚀 Сохранить и запустить напоминания'}
-      </button>
+          {/* Дедлайны */}
+          {stats.upcoming_deadlines.length > 0 && (
+            <div className="summary-section">
+              <h3 className="summary-section-title">⚠️ Дедлайны в периоде</h3>
+              <div className="card" style={{ padding: '8px 12px' }}>
+                {stats.upcoming_deadlines.map((d) => (
+                  <div key={d.task_id} className="summary-deadline-row">
+                    <span>{d.task_name}</span>
+                    <span className="summary-deadline-date">{d.deadline}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Пусто */}
+          {stats.pomodoros_total === 0 && (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              За этот период помодоро не было.<br />
+              <small>Завершайте блоки в календаре — здесь появится статистика.</small>
+            </div>
+          )}
+        </>
+      )}
 
       <div style={{ height: 80 }} />
     </div>

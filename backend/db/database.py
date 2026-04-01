@@ -97,6 +97,9 @@ async def init_db() -> None:
             "ALTER TABLE task_blocks ADD COLUMN task_id INTEGER REFERENCES tasks(id)",
             "ALTER TABLE task_blocks ADD COLUMN pomodoro_number INTEGER DEFAULT 1",
 
+            # Tasks: spam_enabled (мог отсутствовать в ранних версиях)
+            "ALTER TABLE tasks ADD COLUMN spam_enabled BOOLEAN DEFAULT 1",
+
             # Таблица уведомлений о версиях (v1.2.0)
             """CREATE TABLE IF NOT EXISTS version_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

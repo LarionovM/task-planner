@@ -2,7 +2,7 @@
 // v1.2.0: помодоро-центричная модель
 
 import { useMemo } from 'react'
-import { useDroppable } from '@dnd-kit/core'
+import { useDroppable, useDraggable } from '@dnd-kit/core'
 import type { Event, Task, Category, WeeklyScheduleItem } from '../../types'
 
 interface DayColumnProps {
@@ -177,6 +177,67 @@ function DayDropZone({ day }: { day: string }) {
   )
 }
 
+// Draggable задача из секции "Задачи на день" — можно перетащить на слот
+function DraggableDayTask({
+  task, cat, onStatusChange, onUnschedule,
+}: {
+  task: Task
+  cat: Category | undefined
+  onStatusChange: (id: number, status: string) => void
+  onUnschedule: (id: number) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `day-task-${task.id}`,
+    data: { type: 'day-task', task },
+  })
+
+  const style = transform
+    ? { transform: `translate(${transform.x}px, ${transform.y}px)`, zIndex: 100, opacity: 0.85 }
+    : undefined
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '3px 4px', fontSize: 11,
+        borderLeft: `3px solid ${cat?.color || 'var(--accent)'}`,
+        marginBottom: 2, borderRadius: 3,
+        background: 'var(--bg-input)',
+        opacity: (task.status === 'done' || isDragging) ? 0.5 : 1,
+        cursor: 'grab',
+        ...style,
+      }}
+      title="Перетащите на слот времени чтобы запланировать"
+    >
+      {/* Иконка статуса — кликабельная (не drag) */}
+      <button
+        onClick={() => onStatusChange(task.id, NEXT_STATUS[task.status] || 'grooming')}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1 }}
+        title={`Статус: ${task.status}. Нажмите для смены.`}
+      >
+        {STATUS_ICONS[task.status] || '📝'}
+      </button>
+      {/* Название — drag-ручка */}
+      <span {...listeners} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {cat?.emoji || '📋'} {task.name}
+      </span>
+      {PRIORITY_DOTS[task.priority] && (
+        <span style={{ fontSize: 7 }}>{PRIORITY_DOTS[task.priority]}</span>
+      )}
+      {task.estimated_time_min && (
+        <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>~{task.estimated_time_min}м</span>
+      )}
+      <button
+        onClick={() => onUnschedule(task.id)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 10, color: 'var(--text-muted)' }}
+        title="Убрать с этого дня"
+      >✕</button>
+    </div>
+  )
+}
+
 export default function DayColumn({
   day, events, dayTasks, schedule, catMap,
   dayStartTime, dayEndTime,
@@ -237,55 +298,15 @@ export default function DayColumn({
 
           <DayDropZone day={day} />
 
-          {sortedTasks.map((task) => {
-            const cat = catMap[task.category_id]
-            return (
-              <div
-                key={task.id}
-                className="day-task-item"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '3px 4px', fontSize: 11,
-                  borderLeft: `3px solid ${cat?.color || 'var(--accent)'}`,
-                  marginBottom: 2, borderRadius: 3,
-                  background: 'var(--bg-input)',
-                  opacity: task.status === 'done' ? 0.5 : 1,
-                }}
-              >
-                <button
-                  onClick={() => onTaskStatusChange(task.id, NEXT_STATUS[task.status] || 'grooming')}
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: 0, fontSize: 12, lineHeight: 1,
-                  }}
-                  title={`Статус: ${task.status}. Нажмите для смены.`}
-                >
-                  {STATUS_ICONS[task.status] || '📝'}
-                </button>
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {cat?.emoji || '📋'} {task.name}
-                </span>
-                {PRIORITY_DOTS[task.priority] && (
-                  <span style={{ fontSize: 7 }}>{PRIORITY_DOTS[task.priority]}</span>
-                )}
-                {task.estimated_time_min && (
-                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
-                    ~{task.estimated_time_min}м
-                  </span>
-                )}
-                <button
-                  onClick={() => onUnscheduleTask(task.id)}
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: 0, fontSize: 10, color: 'var(--text-muted)',
-                  }}
-                  title="Убрать с этого дня"
-                >
-                  ✕
-                </button>
-              </div>
-            )
-          })}
+          {sortedTasks.map((task) => (
+            <DraggableDayTask
+              key={task.id}
+              task={task}
+              cat={catMap[task.category_id]}
+              onStatusChange={onTaskStatusChange}
+              onUnschedule={onUnscheduleTask}
+            />
+          ))}
         </div>
 
       {/* Временная шкала с событиями */}

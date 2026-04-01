@@ -25,7 +25,11 @@ export default function BottomNav() {
       {items.map((item) => (
         <button
           key={item.screen}
-          className={`nav-item ${screen === item.screen ? 'active' : ''}`}
+          className={`nav-item ${
+            item.screen === 'settings'
+              ? ['settings', 'categories', 'schedule', 'goals'].includes(screen) ? 'active' : ''
+              : screen === item.screen ? 'active' : ''
+          }`}
           onClick={() => setScreen(item.screen)}
         >
           <span className="icon">{item.icon}</span>

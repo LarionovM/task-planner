@@ -357,6 +357,40 @@ class WeekStatsResponse(BaseModel):
     upcoming_deadlines: list[dict]
 
 
+class DayStatItem(BaseModel):
+    """Статистика за один день (для графика)."""
+    date: str              # YYYY-MM-DD
+    pomodoros_done: int = 0
+    pomodoros_total: int = 0
+    focus_min: int = 0     # фактическое время фокуса
+
+
+class PeriodStatsResponse(BaseModel):
+    """Статистика за период (день / неделя / месяц)."""
+    period: str            # day | week | month
+    date_from: str
+    date_to: str
+    # Сводные цифры
+    pomodoros_done: int = 0
+    pomodoros_partial: int = 0
+    pomodoros_failed: int = 0
+    pomodoros_skipped: int = 0
+    pomodoros_total: int = 0
+    focus_min: int = 0     # суммарное фактическое время
+    streak_days: int = 0   # текущий стрик (дней подряд с ≥1 помодоро)
+    avg_per_day: float = 0.0  # среднее помодоро в активный день
+    # По дням — для бар-чарта
+    by_day: list[DayStatItem] = []
+    # По категориям
+    categories: list[CategoryStatsItem] = []
+    # Задачи
+    tasks_done: int = 0
+    tasks_in_progress: int = 0
+    tasks_total: int = 0
+    # Дедлайны в периоде
+    upcoming_deadlines: list[dict] = []
+
+
 # === Allowed Users (для админки) ===
 
 

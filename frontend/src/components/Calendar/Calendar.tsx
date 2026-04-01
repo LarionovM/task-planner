@@ -174,7 +174,7 @@ export default function Calendar() {
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     setDragTask(null)
-    if (active.data.current?.type === 'task') {
+    if (active.data.current?.type === 'task' || active.data.current?.type === 'day-task') {
       setDragTask(active.data.current.task)
       setIsDragging(true)
     }
@@ -200,8 +200,8 @@ export default function Calendar() {
       }
     }
 
-    // Задача из бэклога -> слот (создать событие)
-    if (active.data.current?.type === 'task' && overData?.type === 'slot') {
+    // Задача из бэклога или "Задачи на день" -> слот (открыть форму события)
+    if ((active.data.current?.type === 'task' || active.data.current?.type === 'day-task') && overData?.type === 'slot') {
       setDropDay(overData.day as string)
       setDropTime(overData.time as string)
       setEditEvent(null)

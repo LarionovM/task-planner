@@ -133,6 +133,33 @@ export interface WeekStats {
   upcoming_deadlines: { task_id: number; task_name: string; deadline: string }[]
 }
 
+export interface DayStatItem {
+  date: string           // YYYY-MM-DD
+  pomodoros_done: number
+  pomodoros_total: number
+  focus_min: number
+}
+
+export interface PeriodStatsResponse {
+  period: string         // day | week | month
+  date_from: string
+  date_to: string
+  pomodoros_done: number
+  pomodoros_partial: number
+  pomodoros_failed: number
+  pomodoros_skipped: number
+  pomodoros_total: number
+  focus_min: number
+  streak_days: number
+  avg_per_day: number
+  by_day: DayStatItem[]
+  categories: CategoryStats[]
+  tasks_done: number
+  tasks_in_progress: number
+  tasks_total: number
+  upcoming_deadlines: { task_id: number; task_name: string; deadline: string }[]
+}
+
 // Экраны приложения
 export type Screen =
   | 'timezone'

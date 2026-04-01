@@ -64,16 +64,38 @@ def _is_in_working_hours(t: time, schedule_list, weekday: int | None = None) -> 
 
 
 async def _is_event_active(user_id: int) -> bool:
-    """Проверяет, идёт ли сейчас активное событие у пользователя."""
+    """Проверяет, идёт ли сейчас активное событие у пользователя.
+
+    Считаем активным только события СЕГОДНЯ, которые ещё не истекли
+    больше чем на 1 час — чтобы забытые события прошлых дней не блокировали
+    помодоро вечно.
+    """
     async with async_session() as session:
+        user = await get_or_create_user(session, user_id)
+        tz = ZoneInfo(user.timezone or "Europe/Moscow")
+        now = datetime.now(tz)
+        today = now.date()
+
         from sqlalchemy import select
         result = await session.execute(
             select(Event).where(
                 Event.user_id == user_id,
                 Event.status == "active",
+                Event.day == today,
             )
         )
-        return result.scalars().first() is not None
+        events = result.scalars().all()
+
+    for event in events:
+        end_time = event.end_time
+        if isinstance(end_time, str):
+            h, m = map(int, end_time.split(":"))
+            end_time = time(h, m)
+        end_dt = datetime.combine(today, end_time).replace(tzinfo=tz)
+        # Считаем событие активным до 1 часа после его планового конца
+        if now <= end_dt + timedelta(hours=1):
+            return True
+    return False
 
 
 async def _is_event_upcoming(user_id: int, within_min: int = 25) -> Event | None:
