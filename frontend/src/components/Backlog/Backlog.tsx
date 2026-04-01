@@ -244,7 +244,7 @@ export default function Backlog() {
         scheduled_date: formScheduledDate || null,
         deadline: formHasDeadline && formDeadline ? formDeadline : null,
         estimated_time_min: formEstTime ? parseInt(formEstTime) : null,
-        spam_enabled: formSpam,
+        spam_enabled: true,
         is_recurring: formRecurring,
         recur_days: formRecurDays,
         tags: [],
@@ -721,11 +721,6 @@ export default function Backlog() {
                   </select>
 
                   <div className="backlog-form-checks" style={{ marginTop: 12 }}>
-                    <label className="schedule-toggle">
-                      <input type="checkbox" checked={formSpam} onChange={(e) => setFormSpam(e.target.checked)} />
-                      <span className="schedule-toggle-label">📢 Настойчивые напоминания</span>
-                      <span className="info-tooltip"><span className="info-icon">?</span><span className="info-tooltip-text">Если проигноришь уведомление о завершении блока, бот будет напоминать с нарастающей частотой, пока не ответишь.</span></span>
-                    </label>
                     <label className="schedule-toggle">
                       <input type="checkbox" checked={formRecurring} onChange={(e) => setFormRecurring(e.target.checked)} />
                       <span className="schedule-toggle-label">🔁 Повторяемая</span>
