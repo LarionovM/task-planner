@@ -138,9 +138,13 @@ class Task(Base):
     name = Column(String(500), nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
 
-    # Совместимость со старой схемой: minimal_time_min NOT NULL (из v1.0)
-    # server_default не работает с SQLite NOT NULL без DEFAULT — используем default
+    # Совместимость со старой схемой — столбцы NOT NULL без DEFAULT в старой БД.
+    # Используем Python-side default (не server_default), чтобы SQLAlchemy всегда
+    # включал значение в INSERT и не получал IntegrityError.
     minimal_time_min = Column(Integer, nullable=True, default=1)
+    use_pomodoro = Column(Boolean, nullable=True, default=False)
+    allow_grouping = Column(Boolean, nullable=True, default=True)
+    reminder_before_min = Column(Integer, nullable=True, default=5)
 
     # Прогнозируемое время (минуты) — одно поле вместо minimal + estimated
     estimated_time_min = Column(Integer, nullable=True)
