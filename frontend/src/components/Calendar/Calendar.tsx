@@ -45,7 +45,7 @@ type ViewMode = 'week' | 'day'
 export default function Calendar() {
   const {
     events, tasks, categories, schedule, weekStart, setWeekStart,
-    loadEvents, loadTasks, user,
+    loadEvents, loadTasks,
   } = useStore()
 
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
@@ -65,6 +65,34 @@ export default function Calendar() {
   const [assignDay, setAssignDay] = useState<string>('')  // день для назначения задачи
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  // Фиксированный диапазон отображения — весь день (нерабочие секции скрыты под кнопкой)
+  const DISPLAY_START = '07:00'
+  const DISPLAY_END = '23:30'
+
+  // Состояние раскрытия нерабочих секций — глобальное для всех колонок (ось времени не смещается)
+  const [morningExpanded, setMorningExpanded] = useState(() =>
+    localStorage.getItem('cal_morning_expanded') === 'true'
+  )
+  const [eveningExpanded, setEveningExpanded] = useState(() =>
+    localStorage.getItem('cal_evening_expanded') === 'true'
+  )
+
+  const toggleMorning = useCallback(() => {
+    setMorningExpanded((v) => {
+      const next = !v
+      localStorage.setItem('cal_morning_expanded', String(next))
+      return next
+    })
+  }, [])
+
+  const toggleEvening = useCallback(() => {
+    setEveningExpanded((v) => {
+      const next = !v
+      localStorage.setItem('cal_evening_expanded', String(next))
+      return next
+    })
+  }, [])
 
   useEffect(() => { loadEvents(); loadTasks() }, [weekStart])
 
@@ -102,28 +130,18 @@ export default function Calendar() {
     return m
   }, [categories])
 
-  // Расширение временных рамок если есть события за пределами дня
-  const [effectiveStart, effectiveEnd] = useMemo(() => {
-    let startMin = user?.day_start_time || '08:00'
-    let endMin = user?.day_end_time || '23:50'
+  // Отображаемый диапазон: всегда полный день, нерабочие секции скрыты по умолчанию
+  const effectiveStart = DISPLAY_START
+  const effectiveEnd = DISPLAY_END
 
-    for (const ev of events) {
-      if (ev.start_time < startMin) {
-        const [h, m] = ev.start_time.split(':').map(Number)
-        const rounded = Math.floor(m / 30) * 30
-        startMin = `${String(h).padStart(2, '0')}:${String(rounded).padStart(2, '0')}`
-      }
-      if (ev.end_time > endMin) {
-        const [h, m] = ev.end_time.split(':').map(Number)
-        const rounded = Math.ceil(m / 30) * 30
-        const endH = rounded >= 60 ? h + 1 : h
-        const endM = rounded >= 60 ? 0 : rounded
-        endMin = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
-      }
-    }
-
-    return [startMin, endMin]
-  }, [events, user?.day_start_time, user?.day_end_time])
+  // Глобальные рабочие часы для выравнивания временной оси по всем колонкам
+  const [globalActiveFrom, globalActiveTo] = useMemo(() => {
+    const workDays = schedule.filter((s) => !s.is_day_off)
+    if (workDays.length === 0) return ['09:00', '18:00']
+    const froms = workDays.map((s) => s.active_from).sort()
+    const tos = workDays.map((s) => s.active_to).sort()
+    return [froms[0], tos[tos.length - 1]]
+  }, [schedule])
 
   const prevWeek = () => {
     const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() - 7)
@@ -347,6 +365,12 @@ export default function Calendar() {
                     catMap={catMap}
                     dayStartTime={effectiveStart}
                     dayEndTime={effectiveEnd}
+                    activeFrom={globalActiveFrom}
+                    activeTo={globalActiveTo}
+                    morningExpanded={morningExpanded}
+                    eveningExpanded={eveningExpanded}
+                    onToggleMorning={toggleMorning}
+                    onToggleEvening={toggleEvening}
                     onEventClick={handleEventClick}
                     onAddEvent={handleAddEvent}
                     onDeleteEvent={handleDeleteEvent}
@@ -392,6 +416,12 @@ export default function Calendar() {
                   catMap={catMap}
                   dayStartTime={effectiveStart}
                   dayEndTime={effectiveEnd}
+                  activeFrom={globalActiveFrom}
+                  activeTo={globalActiveTo}
+                  morningExpanded={morningExpanded}
+                  eveningExpanded={eveningExpanded}
+                  onToggleMorning={toggleMorning}
+                  onToggleEvening={toggleEvening}
                   onEventClick={handleEventClick}
                   onAddEvent={handleAddEvent}
                   onDeleteEvent={handleDeleteEvent}

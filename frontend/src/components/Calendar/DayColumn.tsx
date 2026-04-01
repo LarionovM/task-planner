@@ -1,5 +1,6 @@
 // Колонка дня в календаре — события на временной шкале + задачи дня
 // v1.2.0: помодоро-центричная модель
+// v1.5.0: секции нерабочего времени (утро/вечер, выходной)
 
 import { useMemo } from 'react'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
@@ -13,6 +14,12 @@ interface DayColumnProps {
   catMap: Record<number, Category>
   dayStartTime: string
   dayEndTime: string
+  activeFrom: string   // глобальные рабочие часы — начало (для выравнивания оси)
+  activeTo: string     // глобальные рабочие часы — конец (для выравнивания оси)
+  morningExpanded: boolean
+  eveningExpanded: boolean
+  onToggleMorning: () => void
+  onToggleEvening: () => void
   onEventClick: (event: Event) => void
   onAddEvent: (day: string, time: string) => void
   onDeleteEvent: (eventId: number) => void
@@ -41,17 +48,28 @@ const NEXT_STATUS: Record<string, string> = {
   done: 'grooming',
 }
 
-// Генерация 30-минутных слотов
-function generateSlots(dayStartTime: string, dayEndTime: string): string[] {
+interface SlotInfo {
+  time: string
+  isWorking: boolean
+}
+
+// Генерация 30-минутных слотов с маркировкой рабочих/нерабочих
+function generateSlots(
+  dayStartTime: string,
+  dayEndTime: string,
+  activeFrom: string,
+  activeTo: string,
+): SlotInfo[] {
   const startHour = parseInt(dayStartTime.split(':')[0])
   const startMin = parseInt(dayStartTime.split(':')[1])
   const endHour = parseInt(dayEndTime.split(':')[0])
   const endMin = parseInt(dayEndTime.split(':')[1])
 
-  const slots: string[] = []
+  const slots: SlotInfo[] = []
   let h = startHour, m = startMin
   while (h < endHour || (h === endHour && m < endMin)) {
-    slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+    const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+    slots.push({ time, isWorking: time >= activeFrom && time < activeTo })
     m += 30
     if (m >= 60) { m = 0; h++ }
   }
@@ -79,11 +97,13 @@ function TimeSlot({
   time,
   children,
   onAdd,
+  isOffHours,
 }: {
   day: string
   time: string
   children?: React.ReactNode
   onAdd: () => void
+  isOffHours?: boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `slot-${day}-${time}`,
@@ -93,7 +113,7 @@ function TimeSlot({
   return (
     <div
       ref={setNodeRef}
-      className={`day-slot ${isOver ? 'droppable' : ''}`}
+      className={`day-slot ${isOver ? 'droppable' : ''} ${isOffHours ? 'off-hours' : ''}`}
     >
       <span className="day-slot-time">{time}</span>
       {children}
@@ -240,11 +260,15 @@ function DraggableDayTask({
 
 export default function DayColumn({
   day, events, dayTasks, schedule, catMap,
-  dayStartTime, dayEndTime,
+  dayStartTime, dayEndTime, activeFrom, activeTo,
+  morningExpanded, eveningExpanded, onToggleMorning, onToggleEvening,
   onEventClick, onAddEvent, onDeleteEvent,
   onUnscheduleTask, onTaskStatusChange, onAssignTask,
 }: DayColumnProps) {
-  const slots = generateSlots(dayStartTime, dayEndTime)
+  const allSlots = generateSlots(dayStartTime, dayEndTime, activeFrom, activeTo)
+  const morningSlots = allSlots.filter((s) => s.time < activeFrom)
+  const workingSlots = allSlots.filter((s) => s.isWorking)
+  const eveningSlots = allSlots.filter((s) => s.time >= activeTo)
 
   // Маппинг событий на слоты
   const eventAtSlot: Record<string, Event> = {}
@@ -260,8 +284,7 @@ export default function DayColumn({
       const min = startMin + i * 30
       const h = Math.floor(min / 60)
       const m = min % 60
-      const slotKey = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-      occupiedSlots.add(slotKey)
+      occupiedSlots.add(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
     }
   })
 
@@ -271,71 +294,134 @@ export default function DayColumn({
     return [...dayTasks].sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1))
   }, [dayTasks])
 
-  return (
-    <div className={`day-column ${schedule?.is_day_off ? 'day-off-column' : ''}`}>
-      {/* Задачи назначенные на этот день — фиксированная высота для выравнивания колонок */}
-      <div className="day-tasks-section" style={{
-        height: 80,
-        overflowY: 'auto',
-        borderBottom: '1px solid var(--border)',
+  // Рендер одного слота (рабочего или нерабочего)
+  const renderSlot = (time: string, isOffHours: boolean) => {
+    const event = eventAtSlot[time]
+    const isOccupied = occupiedSlots.has(time)
+    if (isOccupied) return null
+
+    if (event) {
+      const duration = getEventDuration(event)
+      const slotsCount = Math.max(1, Math.ceil(duration / 30))
+      const color = getEventColor(event, catMap)
+      return (
+        <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)} isOffHours={isOffHours}>
+          <EventBlock
+            event={event}
+            color={color}
+            slotsCount={slotsCount}
+            catMap={catMap}
+            onEventClick={onEventClick}
+            onDeleteEvent={onDeleteEvent}
+          />
+        </TimeSlot>
+      )
+    }
+
+    return <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)} isOffHours={isOffHours} />
+  }
+
+  // Секция "Задачи на день" — одинакова для всех видов колонки
+  const tasksSection = (
+    <div className="day-tasks-section" style={{
+      height: 80,
+      overflowY: 'auto',
+      borderBottom: '1px solid var(--border)',
+    }}>
+      <div style={{
+        fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
+        padding: '4px 4px 2px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
-        <div style={{
-          fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
-          padding: '4px 4px 2px',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <span>Задачи на день ({sortedTasks.length})</span>
-          <button
-            onClick={() => onAssignTask?.(day)}
-            style={{
-              background: 'var(--accent)', border: 'none', cursor: 'pointer',
-              fontSize: 12, color: 'white', padding: '1px 8px', lineHeight: 1.4,
-              borderRadius: 'var(--radius-sm)', fontWeight: 600,
-            }}
-            title="Назначить задачу на этот день"
-          >+</button>
-        </div>
+        <span>Задачи на день ({sortedTasks.length})</span>
+        <button
+          onClick={() => onAssignTask?.(day)}
+          style={{
+            background: 'var(--accent)', border: 'none', cursor: 'pointer',
+            fontSize: 12, color: 'white', padding: '1px 8px', lineHeight: 1.4,
+            borderRadius: 'var(--radius-sm)', fontWeight: 600,
+          }}
+          title="Назначить задачу на этот день"
+        >+</button>
+      </div>
 
-          <DayDropZone day={day} />
+      <DayDropZone day={day} />
 
-          {sortedTasks.map((task) => (
-            <DraggableDayTask
-              key={task.id}
-              task={task}
-              cat={catMap[task.category_id]}
-              onStatusChange={onTaskStatusChange}
-              onUnschedule={onUnscheduleTask}
-            />
-          ))}
-        </div>
+      {sortedTasks.map((task) => (
+        <DraggableDayTask
+          key={task.id}
+          task={task}
+          cat={catMap[task.category_id]}
+          onStatusChange={onTaskStatusChange}
+          onUnschedule={onUnscheduleTask}
+        />
+      ))}
+    </div>
+  )
 
-      {/* Временная шкала с событиями */}
-      {slots.map((time) => {
-        const event = eventAtSlot[time]
-        const isOccupied = occupiedSlots.has(time)
-        if (isOccupied) return null
+  const isDayOff = !!schedule?.is_day_off
 
-        if (event) {
-          const duration = getEventDuration(event)
-          const slotsCount = Math.max(1, Math.ceil(duration / 30))
-          const color = getEventColor(event, catMap)
+  // Выходной день: всё скрыто под кнопкой раскрытия
+  if (isDayOff) {
+    const anyExpanded = morningExpanded || eveningExpanded
+    const handleExpandDayOff = () => {
+      if (!morningExpanded) onToggleMorning()
+      if (!eveningExpanded) onToggleEvening()
+    }
 
-          return (
-            <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)}>
-              <EventBlock
-                event={event}
-                color={color}
-                slotsCount={slotsCount}
-                catMap={catMap}
-                onEventClick={onEventClick}
-                onDeleteEvent={onDeleteEvent}
-              />
-            </TimeSlot>
-          )
-        }
+    return (
+      <div className="day-column day-off-column">
+        {tasksSection}
+        {!anyExpanded ? (
+          <button className="off-hours-toggle off-hours-toggle-dayoff" onClick={handleExpandDayOff}>
+            ▶ Показать слоты
+          </button>
+        ) : (
+          <>
+            {morningExpanded && morningSlots.map(({ time }) => renderSlot(time, true))}
+            {workingSlots.map(({ time }) => renderSlot(time, true))}
+            {eveningExpanded && eveningSlots.map(({ time }) => renderSlot(time, true))}
+          </>
+        )}
+      </div>
+    )
+  }
 
-        return <TimeSlot key={time} day={day} time={time} onAdd={() => onAddEvent(day, time)} />
-      })}
+  // Рабочий день: утро (скрыто) → рабочие часы (всегда) → вечер (скрыто)
+  return (
+    <div className="day-column">
+      {tasksSection}
+
+      {/* Утренние нерабочие слоты */}
+      {morningSlots.length > 0 && (
+        morningExpanded ? (
+          <>
+            {morningSlots.map(({ time }) => renderSlot(time, true))}
+            <div className="working-hours-separator" />
+          </>
+        ) : (
+          <button className="off-hours-toggle" onClick={onToggleMorning}>
+            ▶ Утренние слоты
+          </button>
+        )
+      )}
+
+      {/* Рабочие часы — всегда видимы */}
+      {workingSlots.map(({ time }) => renderSlot(time, false))}
+
+      {/* Вечерние нерабочие слоты */}
+      {eveningSlots.length > 0 && (
+        eveningExpanded ? (
+          <>
+            <div className="working-hours-separator" />
+            {eveningSlots.map(({ time }) => renderSlot(time, true))}
+          </>
+        ) : (
+          <button className="off-hours-toggle" onClick={onToggleEvening}>
+            ▶ Вечерние слоты
+          </button>
+        )
+      )}
     </div>
   )
 }
