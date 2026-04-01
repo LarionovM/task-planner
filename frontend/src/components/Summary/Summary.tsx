@@ -228,7 +228,7 @@ export default function Summary() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(v: number | string) => fmtMin(Number(v))}
+                      formatter={(v: unknown) => fmtMin(Number(v))}
                       contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
                     />
                     <Legend
