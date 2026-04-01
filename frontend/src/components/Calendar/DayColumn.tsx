@@ -397,11 +397,13 @@ export default function DayColumn({
         morningExpanded ? (
           <>
             {morningSlots.map(({ time }) => renderSlot(time, true))}
-            <div className="working-hours-separator" />
+            <button className="off-hours-toggle off-hours-separator-toggle" onClick={onToggleMorning}>
+              ▼ нерабочее время
+            </button>
           </>
         ) : (
           <button className="off-hours-toggle" onClick={onToggleMorning}>
-            ▶ Утренние слоты
+            ▶ нерабочее время
           </button>
         )
       )}
@@ -413,12 +415,14 @@ export default function DayColumn({
       {eveningSlots.length > 0 && (
         eveningExpanded ? (
           <>
-            <div className="working-hours-separator" />
+            <button className="off-hours-toggle off-hours-separator-toggle" onClick={onToggleEvening}>
+              ▶ нерабочее время
+            </button>
             {eveningSlots.map(({ time }) => renderSlot(time, true))}
           </>
         ) : (
           <button className="off-hours-toggle" onClick={onToggleEvening}>
-            ▶ Вечерние слоты
+            ▶ нерабочее время
           </button>
         )
       )}

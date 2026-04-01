@@ -272,7 +272,22 @@ async def get_task(
 async def create_task(
     session: AsyncSession, user_id: int, **kwargs
 ) -> Task:
-    """Создать задачу."""
+    """Создать задачу.
+
+    Явно проставляем дефолты для колонок, которые в старой схеме БД
+    имеют NOT NULL без DEFAULT — на случай если Python-side default в Column
+    по каким-то причинам не сработал.
+    """
+    _old_schema_defaults = {
+        "minimal_time_min": 1,
+        "use_pomodoro": False,
+        "allow_grouping": True,
+        "reminder_before_min": 5,
+    }
+    for field, default in _old_schema_defaults.items():
+        if kwargs.get(field) is None:
+            kwargs[field] = default
+
     task = Task(user_id=user_id, **kwargs)
     session.add(task)
     await session.flush()

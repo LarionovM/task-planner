@@ -513,10 +513,10 @@
   text-align: center;
 }
 
-/* Разделитель между нерабочими и рабочими слотами */
-.working-hours-separator {
-  height: 2px;
-  background: var(--border);
+/* Разделитель-кнопка между нерабочими и рабочими слотами */
+.off-hours-separator-toggle {
+  border-style: solid;
+  border-color: var(--border);
   margin: 2px 0;
 }
 
