@@ -11,8 +11,8 @@
 
 .settings-tab {
   flex: 1;
-  padding: 10px 8px;
-  font-size: 13px;
+  padding: 6px 2px;
+  font-size: 11px;
   font-weight: 500;
   background: none;
   border: none;
@@ -21,6 +21,12 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .settings-tab:hover {

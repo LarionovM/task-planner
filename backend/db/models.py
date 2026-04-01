@@ -139,7 +139,8 @@ class Task(Base):
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
 
     # Совместимость со старой схемой: minimal_time_min NOT NULL (из v1.0)
-    minimal_time_min = Column(Integer, nullable=True, server_default="1")
+    # server_default не работает с SQLite NOT NULL без DEFAULT — используем default
+    minimal_time_min = Column(Integer, nullable=True, default=1)
 
     # Прогнозируемое время (минуты) — одно поле вместо minimal + estimated
     estimated_time_min = Column(Integer, nullable=True)

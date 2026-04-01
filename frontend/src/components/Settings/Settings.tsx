@@ -720,7 +720,8 @@ export default function Settings() {
             className={`settings-tab ${activeTab === tab.key ? 'active' : ''}`}
             onClick={() => setActiveTab(tab.key)}
           >
-            {tab.icon} {tab.label}
+            <span style={{ fontSize: 18, lineHeight: 1 }}>{tab.icon}</span>
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
