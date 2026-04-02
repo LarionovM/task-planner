@@ -498,6 +498,22 @@ sudo bash /tmp/task-planner/setup.sh
 
 ---
 
+## v1.6.1 (2026-04-02)
+
+**Исправлено:**
+- `backend/api/routes/users.py` — `productive_mode_enabled` теперь сохраняется в PATCH /me/settings (поле не передавалось в kwargs)
+- `backend/api/routes/blocks.py` — удалены 6 мёртвых функций (`_calculate_multi_distribution` и др.) использовавших удалённые колонки БД (`allow_multi_per_block`, `preferred_time`, `device_type`)
+
+**Новое:**
+- `frontend/src/components/Backlog/Backlog.tsx` — статус-фильтр: toggle-кнопки с мультивыбором, «Готово» скрыто по умолчанию
+
+**Рефакторинг:**
+- `frontend/src/constants/timezones.ts` — вынесен дублирующийся `TIMEZONE_DATA` из TimezoneSelect и Settings
+- `frontend/src/store/index.ts` — удалены мёртвые `blocks`/`loadBlocks`
+- `frontend/src/types/index.ts` — удалён неиспользуемый тип `BlockWarning`
+
+---
+
 ## Известные баги / TODO
 
 - [ ] Task 8 (Duolingo Английский урок, preferred_time=11:00) не группируется с tasks 7,9,10 (preferred_time=11:30) — разные preferred_time (неактуально для v1.2.0 — preferred_time удалён)
