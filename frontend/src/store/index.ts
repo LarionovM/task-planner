@@ -6,7 +6,6 @@ import type {
   User,
   Category,
   Task,
-  TaskBlock,
   Event,
   WeeklyScheduleItem,
   WeeklyGoal,
@@ -48,11 +47,9 @@ interface AppState {
   events: Event[]
   loadEvents: () => Promise<void>
 
-  // Блоки
-  blocks: TaskBlock[]
+  // Неделя
   weekStart: string
   setWeekStart: (ws: string) => void
-  loadBlocks: () => Promise<void>
 
   // Расписание
   schedule: WeeklyScheduleItem[]
@@ -170,17 +167,8 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  blocks: [],
   weekStart: getMonday(),
   setWeekStart: (ws) => set({ weekStart: ws }),
-  loadBlocks: async () => {
-    try {
-      const blocks = await api.getBlocks(get().weekStart)
-      set({ blocks })
-    } catch (e: any) {
-      set({ error: e.message })
-    }
-  },
 
   schedule: [],
   loadSchedule: async () => {

@@ -135,7 +135,7 @@
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: 13px;
   background: var(--bg-card);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);

@@ -78,12 +78,6 @@ export interface TaskBlock {
   created_at: string | null
 }
 
-export interface BlockWarning {
-  type: string
-  message: string
-  details?: Record<string, unknown>
-}
-
 export interface WeeklyScheduleItem {
   day_of_week: number // 0=Пн, 6=Вс
   is_day_off: boolean

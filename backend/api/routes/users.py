@@ -55,6 +55,7 @@ async def get_me(
         pomodoro_cycles_before_long=user.pomodoro_cycles_before_long if hasattr(user, 'pomodoro_cycles_before_long') and user.pomodoro_cycles_before_long else 4,
         reminders_paused_until=user.reminders_paused_until if hasattr(user, 'reminders_paused_until') else None,
         reminders_stopped=user.reminders_stopped if hasattr(user, 'reminders_stopped') else False,
+        productive_mode_enabled=user.productive_mode_enabled if hasattr(user, 'productive_mode_enabled') else False,
         is_admin=allowed.is_admin,
         is_active=allowed.is_active,
         created_at=user.created_at,
@@ -83,6 +84,8 @@ async def patch_settings(
         kwargs["pomodoro_long_break_min"] = data.pomodoro_long_break_min
     if data.pomodoro_cycles_before_long is not None:
         kwargs["pomodoro_cycles_before_long"] = data.pomodoro_cycles_before_long
+    if data.productive_mode_enabled is not None:
+        kwargs["productive_mode_enabled"] = data.productive_mode_enabled
 
     user = await update_user_settings(session, allowed.telegram_id, **kwargs)
     return UserResponse(
@@ -96,6 +99,7 @@ async def patch_settings(
         pomodoro_cycles_before_long=user.pomodoro_cycles_before_long if hasattr(user, 'pomodoro_cycles_before_long') and user.pomodoro_cycles_before_long else 4,
         reminders_paused_until=user.reminders_paused_until if hasattr(user, 'reminders_paused_until') else None,
         reminders_stopped=user.reminders_stopped if hasattr(user, 'reminders_stopped') else False,
+        productive_mode_enabled=user.productive_mode_enabled if hasattr(user, 'productive_mode_enabled') else False,
         is_admin=allowed.is_admin,
         is_active=allowed.is_active,
         created_at=user.created_at,

@@ -29,131 +29,6 @@ from backend.db.models import AllowedUser, TaskBlock
 
 router = APIRouter(prefix="/api/blocks", tags=["blocks"])
 
-# Веса приоритетов для мульти-распределения
-PRIORITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
-
-
-def _calculate_multi_distribution(
-    group_tasks: list,
-    block_duration_min: int,
-) -> list[int]:
-    """Рассчитать распределение задач в блоке с дубликатами.
-
-    Для одной задачи: task × N где N = block_duration / task_duration.
-    Для группы задач: взвешенное распределение по приоритету.
-    Только для задач с allow_multi_per_block=True.
-    """
-    import random
-
-    # Фильтр: мульти-задачи и обычные
-    multi_tasks = [t for t in group_tasks if t.allow_multi_per_block]
-    single_tasks = [t for t in group_tasks if not t.allow_multi_per_block]
-
-    # Начинаем с одиночных задач (по 1 разу каждая)
-    result_ids: list[int] = [t.id for t in single_tasks]
-    used_time = sum(t.estimated_time_min or 5 for t in single_tasks)
-    remaining = block_duration_min - used_time
-
-    if remaining <= 0 or not multi_tasks:
-        # Если мульти-задач нет, просто по одному разу
-        result_ids.extend(t.id for t in multi_tasks)
-        return result_ids
-
-    # Одна мульти-задача → простое деление
-    if len(multi_tasks) == 1:
-        task = multi_tasks[0]
-        dur = task.estimated_time_min or 5
-        count = max(1, remaining // dur)
-        result_ids.extend([task.id] * count)
-        return result_ids
-
-    # Несколько мульти-задач → взвешенное распределение
-    total_weight = sum(PRIORITY_WEIGHTS.get(t.priority, 2) for t in multi_tasks)
-    for task in multi_tasks:
-        weight = PRIORITY_WEIGHTS.get(task.priority, 2)
-        dur = task.estimated_time_min or 5
-        # Пропорция: weight / total_weight * remaining / dur
-        share = (weight / total_weight) * remaining
-        count = max(1, round(share / dur))
-        result_ids.extend([task.id] * count)
-
-    random.shuffle(result_ids)
-    return result_ids
-
-
-def _is_preferred_time_match(preferred: "time | None", slot_time: "time", tolerance_min: int = 30) -> bool:
-    """Проверить, попадает ли слот в preferred_time ± tolerance."""
-    if preferred is None:
-        return True  # Без preferred_time — любой слот подходит
-    pref_min = preferred.hour * 60 + preferred.minute
-    slot_min = slot_time.hour * 60 + slot_time.minute
-    return abs(pref_min - slot_min) <= tolerance_min
-
-
-def _preferred_time_bucket(preferred: "time | None") -> str:
-    """Вычислить временной бакет для группировки задач по preferred_time.
-
-    Задачи в пределах ±30 мин должны попадать в один бакет.
-    Используем floor до часа: 11:00 и 11:30 оба → бакет "11".
-    Задачи без preferred_time получают бакет "any" (совместимы с любыми).
-    """
-    if preferred is None:
-        return "any"
-    return str(preferred.hour)
-
-
-def _split_group_by_preferred_time(tasks_list: list, tolerance_min: int = 30) -> list[list]:
-    """Разбить группу задач на подгруппы по совместимости preferred_time.
-
-    Задачи без preferred_time присоединяются к первой подгруппе.
-    Задачи с preferred_time в пределах ±tolerance_min объединяются.
-    """
-    if len(tasks_list) <= 1:
-        return [tasks_list]
-
-    # Разделяем: с preferred_time и без
-    with_pref = [t for t in tasks_list if t.preferred_time is not None]
-    without_pref = [t for t in tasks_list if t.preferred_time is None]
-
-    if not with_pref:
-        return [tasks_list]
-
-    # Сортируем по preferred_time
-    with_pref.sort(key=lambda t: t.preferred_time.hour * 60 + t.preferred_time.minute)
-
-    # Жадная группировка: каждая новая задача присоединяется к последней подгруппе
-    # если её preferred_time совместим со ВСЕМИ задачами в подгруппе
-    subgroups: list[list] = [[with_pref[0]]]
-    for task in with_pref[1:]:
-        # Проверяем совместимость с якорем подгруппы (первой задачей)
-        anchor = subgroups[-1][0]
-        if _are_preferred_times_compatible(anchor.preferred_time, task.preferred_time, tolerance_min):
-            subgroups[-1].append(task)
-        else:
-            subgroups.append([task])
-
-    # Задачи без preferred_time добавляем в первую подгруппу
-    subgroups[0].extend(without_pref)
-
-    return subgroups
-
-
-def _are_preferred_times_compatible(t1: "time | None", t2: "time | None", tolerance_min: int = 30) -> bool:
-    """Проверить, совместимы ли два preferred_time для группировки (±tolerance)."""
-    if t1 is None or t2 is None:
-        return True  # Без preferred_time — совместим с любым
-    t1_min = t1.hour * 60 + t1.minute
-    t2_min = t2.hour * 60 + t2.minute
-    return abs(t1_min - t2_min) <= tolerance_min
-
-
-def _earliest_preferred_time(tasks_list: list) -> "time | None":
-    """Вернуть самое раннее preferred_time из списка задач (или None)."""
-    prefs = [t.preferred_time for t in tasks_list if t.preferred_time is not None]
-    if not prefs:
-        return None
-    return min(prefs, key=lambda t: t.hour * 60 + t.minute)
-
 
 def _str_to_time(s: str) -> time:
     """HH:MM → time."""
@@ -231,18 +106,6 @@ async def post_block(
             raise HTTPException(status_code=400, detail="Для range блока нужны min_duration_min и max_duration_min")
         if data.min_duration_min >= data.max_duration_min:
             raise HTTPException(status_code=400, detail="min_duration_min должен быть меньше max_duration_min")
-
-    # Валидация дубликатов: только для задач с allow_multi_per_block
-    from collections import Counter
-    task_counts = Counter(data.task_ids)
-    for tid, count in task_counts.items():
-        if count > 1:
-            task = await get_task(session, tid, allowed.telegram_id)
-            if task and not task.allow_multi_per_block:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Задача «{task.name}» не поддерживает мульти-режим",
-                )
 
     result = await create_block(
         session,
@@ -373,9 +236,8 @@ async def auto_create_recurring(
 ):
     """Автоматически создать блоки для повторяющейся задачи на неделю.
 
-    Используется при создании/обновлении recurring задачи с preferred_time:
-    - Для каждого recur_day создаёт блок на preferred_time (или ищет свободный слот)
-    - Не создаёт дубли если блок на этот день уже есть
+    Для каждого recur_day ищет свободный слот в расписании.
+    Не создаёт дубли если блок на этот день уже есть.
     """
     task = await get_task(session, task_id, allowed.telegram_id)
     if not task:
@@ -467,12 +329,8 @@ async def auto_create_recurring(
         if day_offset in used_days:
             continue
 
-        # Пробуем preferred_time, потом свободный слот
-        chosen_time = None
-        if task.preferred_time and _is_slot_free(current_day, task.preferred_time, duration):
-            chosen_time = task.preferred_time
-        else:
-            chosen_time = _find_free_slot(current_day, duration)
+        # Ищем свободный слот на этот день
+        chosen_time = _find_free_slot(current_day, duration)
 
         if chosen_time is not None:
             result = await create_block(
@@ -621,11 +479,7 @@ async def auto_distribute(
             if task.id in used_task_ids and day_offset in used_task_ids[task.id]:
                 continue
 
-            chosen_time = None
-            if task.preferred_time and _is_slot_free(current_day, task.preferred_time, duration):
-                chosen_time = task.preferred_time
-            else:
-                chosen_time = _find_free_slot(current_day, duration)
+            chosen_time = _find_free_slot(current_day, duration)
 
             if chosen_time is not None:
                 result = await create_block(
@@ -651,16 +505,14 @@ async def auto_distribute(
         current_day = week_start + timedelta(days=day_offset)
         dow = current_day.weekday()
 
-        # Собираем задачи для этого дня, группируем по epic/category + временной бакет
+        # Собираем задачи для этого дня, группируем по epic/category
         day_groups: dict[str, list] = defaultdict(list)
         for task in small_recurring:
             if dow not in (task.recur_days or []):
                 continue
             if task.id in used_task_ids and day_offset in used_task_ids[task.id]:
                 continue
-            dt = task.device_type or "other"
-            tb = _preferred_time_bucket(task.preferred_time)
-            key = f"epic_{task.epic_id}_{dt}_{tb}" if task.epic_id else f"cat_{task.category_id}_{dt}_{tb}"
+            key = f"epic_{task.epic_id}" if task.epic_id else f"cat_{task.category_id}"
             day_groups[key].append(task)
 
         for group_key, group_tasks in day_groups.items():
@@ -668,11 +520,7 @@ async def auto_distribute(
                 # Одиночная мелкая задача — ставим как обычный блок
                 task = group_tasks[0]
                 duration = task.estimated_time_min or 5
-                chosen_time = None
-                if task.preferred_time and _is_slot_free(current_day, task.preferred_time, duration):
-                    chosen_time = task.preferred_time
-                else:
-                    chosen_time = _find_free_slot(current_day, duration)
+                chosen_time = _find_free_slot(current_day, duration)
                 if chosen_time is not None:
                     result = await create_block(
                         session,
@@ -730,13 +578,7 @@ async def auto_distribute(
                     cat = cat_result.scalar_one_or_none()
                     block_name = f"{cat.emoji or '📋'} {cat.name}" if cat else "Мини-задачи"
 
-                # Preferred time — берём самое раннее из группы
-                pref = _earliest_preferred_time(b)
-                chosen_time = None
-                if pref and _is_slot_free(current_day, pref, b_duration):
-                    chosen_time = pref
-                else:
-                    chosen_time = _find_free_slot(current_day, b_duration)
+                chosen_time = _find_free_slot(current_day, b_duration)
 
                 if chosen_time is not None:
                     result = await create_block(
@@ -764,15 +606,13 @@ async def auto_distribute(
         and (t.estimated_time_min or 30) <= MAX_SMALL_TASK_MIN
     ]
 
-    # Группируем: по epic_id/category_id + временной бакет preferred_time
+    # Группируем: по epic_id/category_id
     groups: dict[str, list] = defaultdict(list)
     for task in small_tasks:
-        dt = task.device_type or "other"
-        tb = _preferred_time_bucket(task.preferred_time)
         if task.epic_id:
-            key = f"epic_{task.epic_id}_{dt}_{tb}"
+            key = f"epic_{task.epic_id}"
         else:
-            key = f"cat_{task.category_id}_{dt}_{tb}"
+            key = f"cat_{task.category_id}"
         groups[key].append(task)
 
     # Собираем блоки из групп (≥2 задачи в группе)
@@ -808,8 +648,7 @@ async def auto_distribute(
                 continue  # одиночные оставляем для шага 3
 
             batch_duration = sum(t.estimated_time_min or 5 for t in batch)
-            # Мульти-распределение: задачи с allow_multi_per_block заполняют блок дубликатами
-            batch_ids = _calculate_multi_distribution(batch, batch_duration)
+            batch_ids = [t.id for t in batch]
             # Имя блока: название эпика или категории
             if group_key.startswith("epic_"):
                 epic_id_val = int(group_key.split("_")[1])
@@ -828,16 +667,9 @@ async def auto_distribute(
                 cat = cat_result.scalar_one_or_none()
                 block_name = f"{cat.emoji or '📋'} {cat.name}" if cat else "Мини-задачи"
 
-            # Preferred time — берём самое раннее из батча
-            batch_pref = _earliest_preferred_time(batch)
-
             for day_offset in day_order:
                 current_day = week_start + timedelta(days=day_offset)
-                free_time = None
-                if batch_pref and _is_slot_free(current_day, batch_pref, batch_duration):
-                    free_time = batch_pref
-                else:
-                    free_time = _find_free_slot(current_day, batch_duration)
+                free_time = _find_free_slot(current_day, batch_duration)
                 if free_time is not None:
                     result = await create_block(
                         session,
@@ -866,15 +698,7 @@ async def auto_distribute(
 
         for day_offset in day_order:
             current_day = week_start + timedelta(days=day_offset)
-
-            # Если у задачи есть preferred_time — пробуем только этот слот (±30 мин)
-            if task.preferred_time:
-                if _is_slot_free(current_day, task.preferred_time, duration):
-                    free_time = task.preferred_time
-                else:
-                    continue  # На этот день нет подходящего слота
-            else:
-                free_time = _find_free_slot(current_day, duration)
+            free_time = _find_free_slot(current_day, duration)
 
             if free_time is not None:
                 result = await create_block(

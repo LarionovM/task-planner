@@ -45,7 +45,7 @@ export default function Backlog() {
   const { tasks, categories, loadTasks, loadCategories, weekStart } = useStore()
   const [filterCat, setFilterCat] = useState<number | ''>('')
   const [filterPriority, setFilterPriority] = useState<string>('')
-  const [filterStatus, setFilterStatus] = useState<string>('')
+  const [filterStatuses, setFilterStatuses] = useState<string[]>(['grooming', 'in_progress', 'blocked'])
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
@@ -143,13 +143,15 @@ export default function Backlog() {
     let list = [...tasks]
     if (filterCat) list = list.filter((t) => t.category_id === filterCat)
     if (filterPriority) list = list.filter((t) => t.priority === filterPriority)
-    if (filterStatus) list = list.filter((t) => t.status === filterStatus)
+    if (filterStatuses.length < Object.keys(STATUS_LABELS).length) {
+      list = list.filter((t) => filterStatuses.includes(t.status || 'grooming'))
+    }
     if (search) {
       const q = search.toLowerCase()
       list = list.filter((t) => t.name.toLowerCase().includes(q))
     }
     return list
-  }, [tasks, filterCat, filterPriority, filterStatus, search])
+  }, [tasks, filterCat, filterPriority, filterStatuses, search])
 
   // Разделение на регулярные и разовые
   const recurringTasks = useMemo(() => filtered.filter((t) => !t.is_epic && t.is_recurring), [filtered])
@@ -454,18 +456,22 @@ export default function Backlog() {
             <option value="low">🟢 Низкий</option>
           </select>
         </div>
-        {/* Фильтр по статусу */}
-        <select
-          className="input backlog-filter-select"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          style={{ marginTop: 8 }}
-        >
-          <option value="">Все статусы</option>
-          {(Object.keys(STATUS_EMOJI) as Array<keyof typeof STATUS_EMOJI>).map((st) => (
-            <option key={st} value={st}>{STATUS_EMOJI[st]} {STATUS_LABELS[st]}</option>
+        {/* Фильтр по статусу — мультивыбор */}
+        <div className="backlog-status-filter">
+          {(Object.keys(STATUS_LABELS) as Array<keyof typeof STATUS_LABELS>).map((st) => (
+            <button
+              key={st}
+              className={`backlog-status-btn${filterStatuses.includes(st) ? ' active' : ''}`}
+              onClick={() =>
+                setFilterStatuses((prev) =>
+                  prev.includes(st) ? prev.filter((s) => s !== st) : [...prev, st]
+                )
+              }
+            >
+              {STATUS_EMOJI[st]} {STATUS_LABELS[st]}
+            </button>
           ))}
-        </select>
+        </div>
         {/* Сортировка + переключатель вида */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div className="backlog-sort-bar" style={{ flex: 1 }}>
