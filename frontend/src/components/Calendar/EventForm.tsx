@@ -98,7 +98,7 @@ export default function EventForm({
         <h3>{editEvent ? '✏️ Редактировать событие' : '📅 Новое событие'}</h3>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -8, marginBottom: 12 }}>
           Созвоны, встречи, приёмы — фиксированные по времени.
-          Во время события помодоро работает в тихом режиме.
+          Во время события циклы фокуса работают в тихом режиме.
         </p>
 
         <div className="block-form">

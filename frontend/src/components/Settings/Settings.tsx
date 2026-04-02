@@ -144,7 +144,7 @@ function GeneralTab() {
       <div className="settings-section card">
         <h3>🕐 Рабочий день</h3>
         <p className="hint" style={{ marginBottom: 8 }}>
-          Определяет часы для помодоро-циклов и слотов в календаре
+          Определяет часы для циклов фокуса и слотов в календаре
         </p>
         <div style={{ display: 'flex', gap: 12 }}>
           <div style={{ flex: 1 }}>
@@ -168,7 +168,7 @@ function GeneralTab() {
       {/* Дни недели */}
       <div className="settings-section card">
         <h3>📅 Дни недели</h3>
-        <p className="hint" style={{ marginBottom: 8 }}>В выходные бот не отправляет помодоро</p>
+        <p className="hint" style={{ marginBottom: 8 }}>В выходные бот не запускает циклы фокуса</p>
         <div>
           {days.map((day, idx) => (
             <div key={day.day_of_week} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: idx < days.length - 1 ? '1px solid var(--border)' : 'none' }}>
@@ -382,7 +382,7 @@ function ProductivityTab() {
         <h3>⚡ Режим продуктивной работы</h3>
         <div className="info-panel">
           <span className="info-panel-icon">ℹ️</span>
-          <span>Когда включён — бот автоматически запускает циклы фокуса (работа + перерыв) в рабочие часы. Помодоро в действии. Когда выключен — бот не беспокоит циклами.</span>
+          <span>Когда включён — бот автоматически запускает циклы фокуса (работа + перерыв) в рабочие часы. Циклы фокуса в действии. Когда выключен — бот не беспокоит циклами.</span>
         </div>
         <label className="schedule-toggle" style={{ marginTop: 12 }}>
           <input

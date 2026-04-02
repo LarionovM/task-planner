@@ -362,7 +362,7 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
     if not blocks:
         await message.answer(
             "📊 *Статистика за неделю*\n\n"
-            "Пока нет помодоро-сессий.\n"
+            "Пока нет сессий фокуса.\n"
             "Создай задачи и запусти планировщик!",
             parse_mode="Markdown",
         )
@@ -402,7 +402,7 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
 
     lines = [
         f"📊 *Статистика за неделю* ({week_start.strftime('%d.%m')}–{(week_start + timedelta(days=6)).strftime('%d.%m')})\n",
-        f"🍅 Всего помодоро: {total}",
+        f"🍅 Всего фокусов: {total}",
         f"✅ Выполнено: {done}",
         f"⚡ Частично: {partial}",
         f"❌ Провалено: {failed}",

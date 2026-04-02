@@ -79,7 +79,7 @@ async def cb_pomo_select_task(callback: CallbackQuery, allowed_user: AllowedUser
             block_id = block.id
 
         # Формируем сообщение с описанием и ссылкой
-        text_lines = [f"🍅 *Помодоро #{pomo_number}* — {work_min} мин"]
+        text_lines = [f"🍅 *Фокус #{pomo_number}* — {work_min} мин"]
         text_lines.append(f"📝 {task.name}")
 
         description = getattr(task, 'description', None)
@@ -147,7 +147,7 @@ async def cb_pomo_no_task(callback: CallbackQuery, allowed_user: AllowedUser):
         ])
 
         await callback.message.edit_text(
-            f"🍅 *Помодоро #{pomo_number}* — {work_min} мин\nФокус без задачи! 🎯",
+            f"🍅 *Фокус #{pomo_number}* — {work_min} мин\nФокус без задачи! 🎯",
             reply_markup=keyboard,
             parse_mode="Markdown",
         )
@@ -169,7 +169,7 @@ async def cb_pomo_skip(callback: CallbackQuery, allowed_user: AllowedUser):
                              payload={"pomodoro_number": pomo_number})
             await session.commit()
 
-        await callback.message.edit_text(f"⏭ Помодоро #{pomo_number} пропущен.")
+        await callback.message.edit_text(f"⏭ Фокус #{pomo_number} пропущен.")
         await callback.answer()
     except Exception as e:
         logger.error(f"Ошибка в cb_pomo_skip: {e}", exc_info=True)
@@ -287,7 +287,7 @@ async def cb_block_finish(callback: CallbackQuery, allowed_user: AllowedUser):
 
         # Показываем опросник
         await _send_questionnaire(callback, block_id)
-        await callback.answer("Помодоро завершён!")
+        await callback.answer("Фокус завершён!")
     except Exception as e:
         logger.error(f"Ошибка в cb_block_finish: {e}", exc_info=True)
         await callback.answer(f"Ошибка: {e}", show_alert=True)
@@ -309,7 +309,7 @@ async def cb_block_skip(callback: CallbackQuery, allowed_user: AllowedUser):
                          task_block_id=block_id)
         await session.commit()
 
-    await callback.message.edit_text("⏭ Помодоро пропущен.")
+    await callback.message.edit_text("⏭ Фокус пропущен.")
     await callback.answer()
 
 
@@ -328,7 +328,7 @@ async def _send_questionnaire(callback: CallbackQuery, block_id: int):
         ],
     ])
     await callback.message.edit_text(
-        "🏁 *Помодоро завершён!*\nКак прошло?",
+        "🏁 *Фокус завершён!*\nКак прошло?",
         reply_markup=keyboard,
         parse_mode="Markdown",
     )
@@ -536,7 +536,7 @@ async def handle_user_message_during_spam(message: Message, allowed_user: Allowe
         if active_block:
             keyboard = questionnaire_keyboard(active_block.id)
             await message.answer(
-                "🏁 *Помодоро завершён!*\nКак прошло?",
+                "🏁 *Фокус завершён!*\nКак прошло?",
                 reply_markup=keyboard,
                 parse_mode="Markdown",
             )

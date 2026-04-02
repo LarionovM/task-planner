@@ -420,7 +420,7 @@ async def send_event_start(event_id: int) -> None:
     )
     if extra_lines:
         text += "\n" + "\n".join(extra_lines)
-    text += "\n\n_Помодоро-уведомления приостановлены на время события_"
+    text += "\n\n_Уведомления о фокусе приостановлены на время события_"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
@@ -557,8 +557,8 @@ async def _maybe_start_pomo_pick_spam(user_id: int, spam_config) -> None:
 
     bot = get_bot()
     interval = spam_config.initial_interval_sec
-    texts = ["🍅 Ты выбрал задачу?", "Помодоро ждёт! 👀", "Выбери задачу или нажми «Без задачи»",
-             "tick tock... ⏰", "эй, не пропусти помодоро 🍅"]
+    texts = ["🍅 Ты выбрал задачу?", "Фокус ждёт! 👀", "Выбери задачу или нажми «Без задачи»",
+             "tick tock... ⏰", "эй, не пропусти сессию фокуса 🍅"]
     text_idx = 0
 
     async def spam_loop():
@@ -772,7 +772,7 @@ async def send_day_summary(user_id: int) -> None:
 
     lines = [
         f"📊 *Итог дня — {today.strftime('%d.%m.%Y')}*\n",
-        f"🍅 Помодоро: {total}",
+        f"🍅 Сессий фокуса: {total}",
         f"✅ Выполнено: {done}",
     ]
     if partial:
