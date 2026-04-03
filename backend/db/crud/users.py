@@ -92,8 +92,6 @@ async def get_or_create_user(
     user = User(
         telegram_id=telegram_id,
         timezone=settings.default_timezone,
-        quiet_start=time(23, 0),
-        quiet_end=time(8, 0),
         day_start_time=time(8, 0),
         day_end_time=time(23, 50),
     )
