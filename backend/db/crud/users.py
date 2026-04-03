@@ -184,7 +184,7 @@ async def delete_allowed_user(
     # spam_config → categories → users → allowed_users
     user_id_tables = [
         "logs", "task_blocks", "events", "tasks", "weekly_goals",
-        "weekly_schedule", "spam_config", "categories",
+        "weekly_schedule", "spam_config", "categories", "version_notifications",
     ]
     for table in user_id_tables:
         await session.execute(
