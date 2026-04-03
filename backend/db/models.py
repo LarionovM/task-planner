@@ -36,7 +36,7 @@ class AllowedUser(Base):
     added_at = Column(DateTime, default=func.now(), nullable=False)
 
     # Связь с настройками пользователя
-    user_settings = relationship("User", back_populates="allowed_user", uselist=False)
+    user_settings = relationship("User", back_populates="allowed_user", uselist=False, cascade="all, delete-orphan")
 
 
 class User(Base):
