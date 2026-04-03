@@ -24,17 +24,17 @@ APP_VERSION = "1.6.3"
 # Changelog для каждой версии — отправляется пользователям
 CHANGELOGS: dict[str, str] = {
     "1.6.3": (
-        "🔧 <b>Task Planner v1.6.3</b>\n\n"
-        "🐛 <b>Исправлено</b>\n"
+        "🔧 Task Planner v1.6.3\n\n"
+        "🐛 Исправлено\n"
         "• Кнопки в админ-панели теперь работают\n"
         "• Удаление пользователей — исправлена цепочка удаления данных\n"
-        "• Весь бот переведён на HTML-форматирование — спецсимволы в именах больше не ломают сообщения\n\n"
-        "🛠 <b>Улучшения</b>\n"
+        "• Спецсимволы в именах больше не ломают сообщения бота\n\n"
+        "🛠 Улучшения\n"
         "• Ошибки бота теперь приходят админу в чат"
     ),
     "1.6.2": (
-        "🔧 <b>Task Planner v1.6.2</b>\n\n"
-        "🐛 <b>Исправлено</b>\n"
+        "🔧 Task Planner v1.6.2\n\n"
+        "🐛 Исправлено\n"
         "• Запрос доступа — больше не падает если в имени пользователя есть спецсимволы\n"
     ),
     "1.6.1": (
@@ -224,7 +224,7 @@ async def notify_new_version(bot) -> int:
             await bot.send_message(
                 user.telegram_id,
                 changelog,
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
 
             # Записываем в БД
@@ -261,7 +261,7 @@ async def send_custom_broadcast(bot, text: str, admin_id: int) -> int:
             await bot.send_message(
                 user.telegram_id,
                 text,
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
             sent_count += 1
         except Exception as e:
