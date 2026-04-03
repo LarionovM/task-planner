@@ -435,8 +435,8 @@ async def admin_approve_request(callback: CallbackQuery, allowed_user: AllowedUs
         existing = await get_allowed_user(session, target_id)
         if existing:
             await callback.message.edit_text(
-                f"⚠️ Пользователь `{target_id}` уже в списке.",
-                parse_mode="Markdown",
+                f"⚠️ Пользователь <code>{target_id}</code> уже в списке.",
+                parse_mode="HTML",
             )
             _pending_requests.discard(target_id)
             await callback.answer()
@@ -456,8 +456,7 @@ async def admin_approve_request(callback: CallbackQuery, allowed_user: AllowedUs
 
     # Обновляем сообщение у админа
     await callback.message.edit_text(
-        callback.message.text + "\n\n✅ *Одобрено!*",
-        parse_mode="Markdown",
+        callback.message.text + "\n\n✅ Одобрено!",
     )
 
     # Уведомляем пользователя
@@ -483,11 +482,11 @@ async def admin_approve_request(callback: CallbackQuery, allowed_user: AllowedUs
 
         await callback.bot.send_message(
             target_id,
-            "🎉 *Доступ одобрен!*\n\n"
+            "🎉 <b>Доступ одобрен!</b>\n\n"
             "Администратор добавил вас в бота.\n"
             "Нажмите кнопку ниже, чтобы начать планировать!",
             reply_markup=keyboard,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.error(f"Не удалось уведомить пользователя {target_id}: {e}")
@@ -509,18 +508,17 @@ async def admin_reject_request(callback: CallbackQuery, allowed_user: AllowedUse
 
     # Обновляем сообщение у админа
     await callback.message.edit_text(
-        callback.message.text + "\n\n❌ *Отклонено*",
-        parse_mode="Markdown",
+        callback.message.text + "\n\n❌ Отклонено",
     )
 
     # Уведомляем пользователя
     try:
         await callback.bot.send_message(
             target_id,
-            "😔 *Запрос отклонён*\n\n"
+            "😔 <b>Запрос отклонён</b>\n\n"
             "Администратор отклонил ваш запрос на доступ.\n"
             "Вы можете связаться с ним напрямую.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.error(f"Не удалось уведомить пользователя {target_id}: {e}")
