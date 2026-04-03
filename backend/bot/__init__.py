@@ -1,12 +1,14 @@
 """Инициализация Telegram бота — Bot, Dispatcher, роутеры (v1.2.0)."""
 
+import html
 import logging
+import traceback
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
+from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo, ErrorEvent
 
 from backend.config import settings as app_settings
 from backend.bot.middlewares import WhitelistMiddleware
@@ -39,6 +41,49 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(plan.router)
     dp.include_router(backlog.router)
     dp.include_router(callbacks.router)  # Общие callback-и последними
+
+    # Глобальный обработчик ошибок — уведомляет админа
+    @dp.errors()
+    async def global_error_handler(event: ErrorEvent) -> bool:
+        tb = "".join(traceback.format_exception(
+            type(event.exception), event.exception, event.exception.__traceback__
+        ))
+        logger.error("Необработанное исключение: %s", tb)
+
+        admin_id = app_settings.admin_user_id
+        if not admin_id:
+            return True
+
+        # Определяем пользователя, у которого случилась ошибка
+        user_info = "неизвестен"
+        update = event.update
+        from_user = None
+        if update.message and update.message.from_user:
+            from_user = update.message.from_user
+        elif update.callback_query and update.callback_query.from_user:
+            from_user = update.callback_query.from_user
+        if from_user:
+            parts = []
+            if from_user.full_name:
+                parts.append(html.escape(from_user.full_name))
+            if from_user.username:
+                parts.append(f"@{html.escape(from_user.username)}")
+            parts.append(f"ID: {from_user.id}")
+            user_info = ", ".join(parts)
+
+        try:
+            short_tb = tb[-2800:]  # Telegram ограничивает длину сообщения
+            bot: Bot = update.bot  # type: ignore[union-attr]
+            await bot.send_message(
+                admin_id,
+                f"🔴 <b>Ошибка в боте</b>\n"
+                f"👤 Пользователь: {user_info}\n\n"
+                f"<pre>{html.escape(short_tb)}</pre>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass  # Не даём рекурсивно падать обработчику ошибок
+        return True  # Сообщаем aiogram что ошибка обработана
 
     return dp
 
