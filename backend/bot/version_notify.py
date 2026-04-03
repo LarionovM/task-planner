@@ -19,10 +19,15 @@ logger = logging.getLogger(__name__)
 
 # === Текущая версия и changelog ===
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 
 # Changelog для каждой версии — отправляется пользователям
 CHANGELOGS: dict[str, str] = {
+    "1.6.2": (
+        "🔧 *Task Planner v1.6.2*\n\n"
+        "🐛 *Исправлено*\n"
+        "• Запрос доступа — больше не падает если в имени пользователя есть спецсимволы\n"
+    ),
     "1.6.1": (
         "🔧 *Task Planner v1.6.1*\n\n"
         "🐛 *Исправлено*\n"

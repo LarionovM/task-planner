@@ -181,13 +181,13 @@ class WhitelistMiddleware(BaseMiddleware):
         try:
             await bot.send_message(
                 admin_id,
-                f"📩 *Запрос на доступ*\n\n"
+                f"📩 <b>Запрос на доступ</b>\n\n"
                 f"👤 Имя: {display_name}\n"
-                f"🆔 ID: `{user_id}`\n"
+                f"🆔 ID: <code>{user_id}</code>\n"
                 f"📎 Username: {username_str}\n\n"
                 f"Одобрить доступ?",
                 reply_markup=admin_keyboard,
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         except Exception as e:
             logger.error(f"Не удалось отправить запрос админу: {e}")
