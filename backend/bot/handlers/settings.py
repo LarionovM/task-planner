@@ -64,6 +64,17 @@ def _settings_main_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _settings_text(user, status_text: str, productive_text: str) -> str:
+    """Текст главного меню настроек."""
+    return (
+        "⚙️ <b>Настройки</b>\n\n"
+        f"⚡ Режим продуктивности: {productive_text}\n"
+        f"🕐 Часовой пояс: <code>{user.timezone}</code>\n"
+        f"📢 Напоминания: {status_text}\n\n"
+        "Остальные настройки — в Web App (кнопка в /start)"
+    )
+
+
 @router.message(Command("settings"))
 async def cmd_settings(message: Message, allowed_user: AllowedUser):
     """Команда /settings — главное меню настроек."""
@@ -82,18 +93,10 @@ async def cmd_settings(message: Message, allowed_user: AllowedUser):
 
     productive_text = "ВКЛ ⚡" if productive_mode else "ВЫКЛ"
 
-    text = (
-        "⚙️ *Настройки*\n\n"
-        f"⚡ Режим продуктивности: {productive_text}\n"
-        f"🕐 Часовой пояс: `{user.timezone}`\n"
-        f"📢 Напоминания: {status_text}\n\n"
-        "Остальные настройки — в Web App (кнопка в /start)"
-    )
-
     await message.answer(
-        text,
+        _settings_text(user, status_text, productive_text),
         reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped, productive_mode),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -121,9 +124,9 @@ def _pause_keyboard() -> InlineKeyboardMarkup:
 async def cb_pause_menu(callback: CallbackQuery, allowed_user: AllowedUser):
     """Показать варианты паузы."""
     await callback.message.edit_text(
-        "⏸ *Пауза напоминаний*\nНа сколько поставить на паузу?",
+        "⏸ <b>Пауза напоминаний</b>\nНа сколько поставить на паузу?",
         reply_markup=_pause_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -162,9 +165,9 @@ async def cb_pause_select(callback: CallbackQuery, allowed_user: AllowedUser):
     cancel_user_pomodoro_jobs(allowed_user.telegram_id)
 
     await callback.message.edit_text(
-        f"⏸ Напоминания на паузе до *{until.strftime('%H:%M')}*\n"
+        f"⏸ Напоминания на паузе до <b>{until.strftime('%H:%M')}</b>\n"
         f"Зайди в /settings чтобы возобновить раньше.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -188,9 +191,9 @@ async def cb_stop(callback: CallbackQuery, allowed_user: AllowedUser):
     cancel_user_pomodoro_jobs(allowed_user.telegram_id)
 
     await callback.message.edit_text(
-        "⏹ Напоминания *остановлены*.\n"
+        "⏹ Напоминания <b>остановлены</b>.\n"
         "Зайди в /settings → ▶️ Возобновить, когда будешь готов.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -209,7 +212,7 @@ async def cb_resume(callback: CallbackQuery, allowed_user: AllowedUser):
         )
         await session.commit()
 
-    await callback.message.edit_text("✅ Напоминания *включены*!", parse_mode="Markdown")
+    await callback.message.edit_text("✅ Напоминания <b>включены</b>!", parse_mode="HTML")
     await callback.answer()
 
 
@@ -234,18 +237,10 @@ async def cb_back(callback: CallbackQuery, allowed_user: AllowedUser):
     productive_mode = getattr(user, 'productive_mode_enabled', False) or False
     productive_text = "ВКЛ ⚡" if productive_mode else "ВЫКЛ"
 
-    text = (
-        "⚙️ *Настройки*\n\n"
-        f"⚡ Режим продуктивности: {productive_text}\n"
-        f"🕐 Часовой пояс: `{user.timezone}`\n"
-        f"📢 Напоминания: {status_text}\n\n"
-        "Остальные настройки — в Web App (кнопка в /start)"
-    )
-
     await callback.message.edit_text(
-        text,
+        _settings_text(user, status_text, productive_text),
         reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped, productive_mode),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -268,17 +263,17 @@ async def cb_toggle_productive(callback: CallbackQuery, allowed_user: AllowedUse
         from backend.bot.scheduler import schedule_pomodoro_cycle
         user_tz = user.timezone or "Europe/Moscow"
         await schedule_pomodoro_cycle(allowed_user.telegram_id, user_tz)
-        answer_text = "⚡ Режим продуктивности *включён*! Циклы фокуса запланированы."
+        answer_text = "⚡ Режим продуктивности <b>включён</b>! Циклы фокуса запланированы."
     else:
         # Выключили — отменяем помодоро-jobs
         cancel_user_pomodoro_jobs(allowed_user.telegram_id)
-        answer_text = "⚡ Режим продуктивности *выключен*. Циклы фокуса остановлены."
+        answer_text = "⚡ Режим продуктивности <b>выключен</b>. Циклы фокуса остановлены."
 
     is_stopped = getattr(user, 'reminders_stopped', False) or False
     await callback.message.edit_text(
         answer_text,
         reply_markup=_settings_main_keyboard(allowed_user.is_admin, is_stopped, new_value),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -296,10 +291,10 @@ async def cb_spam(callback: CallbackQuery, allowed_user: AllowedUser):
     toggle_text = "❌ Выключить" if config.enabled else "✅ Включить"
 
     text = (
-        f"📢 *Спам-настройки*\n\n"
+        f"📢 <b>Спам-настройки</b>\n\n"
         f"Статус: {status}\n"
         f"Интервал: {config.initial_interval_sec} сек → x{config.multiplier} → макс {config.max_interval_sec} сек\n\n"
-        "_Детальная настройка — в Web App_"
+        "<i>Детальная настройка — в Web App</i>"
     )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -307,7 +302,7 @@ async def cb_spam(callback: CallbackQuery, allowed_user: AllowedUser):
         [InlineKeyboardButton(text="◀️ Назад", callback_data="set:back")],
     ])
 
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 
@@ -335,12 +330,11 @@ async def cb_admin_panel(callback: CallbackQuery, allowed_user: AllowedUser):
         await callback.answer("Нет доступа", show_alert=True)
         return
 
-    # Импортируем админ-функции
     from backend.bot.handlers.admin import admin_keyboard, admin_text
     await callback.message.edit_text(
         admin_text(),
         reply_markup=admin_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -361,10 +355,10 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
 
     if not blocks:
         await message.answer(
-            "📊 *Статистика за неделю*\n\n"
+            "📊 <b>Статистика за неделю</b>\n\n"
             "Пока нет сессий фокуса.\n"
             "Создай задачи и запусти планировщик!",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return
 
@@ -401,7 +395,7 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
             cat_time[task.category_id] = cat_time.get(task.category_id, 0) + mins
 
     lines = [
-        f"📊 *Статистика за неделю* ({week_start.strftime('%d.%m')}–{(week_start + timedelta(days=6)).strftime('%d.%m')})\n",
+        f"📊 <b>Статистика за неделю</b> ({week_start.strftime('%d.%m')}–{(week_start + timedelta(days=6)).strftime('%d.%m')})\n",
         f"🍅 Всего фокусов: {total}",
         f"✅ Выполнено: {done}",
         f"⚡ Частично: {partial}",
@@ -409,7 +403,7 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
         f"⏭ Пропущено: {skipped}",
         f"📋 Осталось: {planned}",
         "",
-        "📁 *По категориям:*",
+        "📁 <b>По категориям:</b>",
     ]
 
     for cat in categories:
@@ -424,4 +418,4 @@ async def cmd_stats(message: Message, allowed_user: AllowedUser):
         check = " ✅" if target and mins >= target * 60 else ""
         lines.append(f"  {cat.emoji or ''} {cat.name}: {time_str}{target_str}{check}")
 
-    await message.answer("\n".join(lines), parse_mode="Markdown")
+    await message.answer("\n".join(lines), parse_mode="HTML")

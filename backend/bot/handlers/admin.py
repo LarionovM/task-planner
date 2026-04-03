@@ -1,5 +1,6 @@
 """Обработчики /admin — панель администратора."""
 
+import html
 import logging
 
 from aiogram import Router, F
@@ -44,12 +45,17 @@ class AdminStates(StatesGroup):
 
 
 def _user_display(u: AllowedUser) -> str:
-    """Форматирует отображение пользователя."""
+    """Форматирует отображение пользователя (plain text, без HTML)."""
     if u.username:
         return f"@{u.username}"
     if u.first_name:
         return u.first_name
     return str(u.telegram_id)
+
+
+def _esc(text: str) -> str:
+    """HTML-экранирование пользовательских данных."""
+    return html.escape(str(text))
 
 
 # === Главное меню админа ===
@@ -75,7 +81,7 @@ def admin_keyboard() -> InlineKeyboardMarkup:
 
 def admin_text() -> str:
     """Текст для админ-панели (используется в settings.py)."""
-    return "🔑 *Панель администратора*\n\nВыберите действие:"
+    return "🔑 <b>Панель администратора</b>\n\nВыберите действие:"
 
 
 async def _user_select_keyboard(admin_id: int, action: str) -> InlineKeyboardMarkup:
@@ -106,9 +112,9 @@ async def cmd_admin(message: Message, allowed_user: AllowedUser):
         return
 
     await message.answer(
-        "🔑 *Панель администратора*\n\nВыберите действие:",
+        "🔑 <b>Панель администратора</b>\n\nВыберите действие:",
         reply_markup=admin_menu_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -118,9 +124,9 @@ async def admin_back(callback: CallbackQuery, state: FSMContext, allowed_user: A
         return
     await state.clear()
     await callback.message.answer(
-        "🔑 *Панель администратора*\n\nВыберите действие:",
+        "🔑 <b>Панель администратора</b>\n\nВыберите действие:",
         reply_markup=admin_menu_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -134,11 +140,11 @@ async def admin_add_start(callback: CallbackQuery, state: FSMContext, allowed_us
         return
 
     await callback.message.answer(
-        "Введите *Telegram ID* пользователя для добавления.\n\n"
+        "Введите <b>Telegram ID</b> пользователя для добавления.\n\n"
         "💡 Узнать ID можно у бота @userinfobot\n"
         "После первого сообщения боту его @username появится в списке.",
         reply_markup=ForceReply(selective=True),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_add_user_id)
     await callback.answer()
@@ -157,7 +163,7 @@ async def admin_add_process(message: Message, state: FSMContext, allowed_user: A
         await message.answer(
             "❌ Для добавления нужен числовой Telegram ID.\n"
             "💡 Узнать ID: @userinfobot",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=admin_menu_keyboard(),
         )
         await state.clear()
@@ -166,10 +172,10 @@ async def admin_add_process(message: Message, state: FSMContext, allowed_user: A
     async with async_session() as session:
         existing = await get_allowed_user(session, new_user_id)
         if existing:
-            name = _user_display(existing)
+            name = _esc(_user_display(existing))
             await message.answer(
-                f"⚠️ {name} (`{new_user_id}`) уже в списке.",
-                parse_mode="Markdown",
+                f"⚠️ {name} (<code>{new_user_id}</code>) уже в списке.",
+                parse_mode="HTML",
             )
             await state.clear()
             return
@@ -183,8 +189,8 @@ async def admin_add_process(message: Message, state: FSMContext, allowed_user: A
         await session.commit()
 
     await message.answer(
-        f"✅ Пользователь `{new_user_id}` добавлен!",
-        parse_mode="Markdown",
+        f"✅ Пользователь <code>{new_user_id}</code> добавлен!",
+        parse_mode="HTML",
         reply_markup=admin_menu_keyboard(),
     )
     await state.clear()
@@ -200,9 +206,9 @@ async def admin_delete_start(callback: CallbackQuery, state: FSMContext, allowed
 
     keyboard = await _user_select_keyboard(allowed_user.telegram_id, "delete")
     await callback.message.answer(
-        "Выберите пользователя или введите *@username* / *ID*:",
+        "Выберите пользователя или введите <b>@username</b> / <b>ID</b>:",
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_delete_user_id)
     await callback.answer()
@@ -230,7 +236,7 @@ async def admin_delete_process(message: Message, state: FSMContext, allowed_user
         await message.answer(
             "❌ Пользователь не найден.\n"
             "Введите @username или числовой ID.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return
 
@@ -245,18 +251,18 @@ async def _do_delete(message: Message, allowed_user: AllowedUser, target_id: int
 
     async with async_session() as session:
         target = await get_allowed_user(session, target_id)
-        name = _user_display(target) if target else str(target_id)
+        name = _esc(_user_display(target)) if target else str(target_id)
         deleted = await delete_allowed_user(session, target_id)
         await session.commit()
 
     if deleted:
         await message.answer(
             f"✅ {name} удалён.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=admin_menu_keyboard(),
         )
     else:
-        await message.answer("⚠️ Пользователь не найден.", parse_mode="Markdown")
+        await message.answer("⚠️ Пользователь не найден.")
 
 
 # === Вкл/выкл пользователя ===
@@ -269,9 +275,9 @@ async def admin_toggle_start(callback: CallbackQuery, state: FSMContext, allowed
 
     keyboard = await _user_select_keyboard(allowed_user.telegram_id, "toggle")
     await callback.message.answer(
-        "Выберите пользователя или введите *@username* / *ID*:",
+        "Выберите пользователя или введите <b>@username</b> / <b>ID</b>:",
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_toggle_user_id)
     await callback.answer()
@@ -296,7 +302,7 @@ async def admin_toggle_process(message: Message, state: FSMContext, allowed_user
         target = await resolve_user_input(session, message.text or "")
 
     if not target:
-        await message.answer("❌ Пользователь не найден.", parse_mode="Markdown")
+        await message.answer("❌ Пользователь не найден.")
         return
 
     await _do_toggle(message, target.telegram_id)
@@ -310,14 +316,14 @@ async def _do_toggle(message: Message, target_id: int):
 
     if user:
         status = "✅ активен" if user.is_active else "🔇 отключён"
-        name = _user_display(user)
+        name = _esc(_user_display(user))
         await message.answer(
             f"{name} теперь {status}.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=admin_menu_keyboard(),
         )
     else:
-        await message.answer("⚠️ Пользователь не найден.", parse_mode="Markdown")
+        await message.answer("⚠️ Пользователь не найден.")
 
 
 # === Статистика пользователя ===
@@ -330,9 +336,9 @@ async def admin_stats_start(callback: CallbackQuery, state: FSMContext, allowed_
 
     keyboard = await _user_select_keyboard(allowed_user.telegram_id, "stats")
     await callback.message.answer(
-        "Выберите пользователя или введите *@username* / *ID*:",
+        "Выберите пользователя или введите <b>@username</b> / <b>ID</b>:",
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_stats_user_id)
     await callback.answer()
@@ -357,7 +363,7 @@ async def admin_stats_process(message: Message, state: FSMContext, allowed_user:
         target = await resolve_user_input(session, message.text or "")
 
     if not target:
-        await message.answer("❌ Пользователь не найден.", parse_mode="Markdown")
+        await message.answer("❌ Пользователь не найден.")
         return
 
     await _do_stats(message, target.telegram_id)
@@ -367,12 +373,12 @@ async def admin_stats_process(message: Message, state: FSMContext, allowed_user:
 async def _do_stats(message: Message, target_id: int):
     async with async_session() as session:
         target = await get_allowed_user(session, target_id)
-        name = _user_display(target) if target else str(target_id)
+        name = _esc(_user_display(target)) if target else str(target_id)
         stats = await get_user_stats(session, target_id)
 
     bs = stats["blocks_by_status"]
     text = (
-        f"📊 *Статистика* {name}\n"
+        f"📊 <b>Статистика</b> {name}\n"
         f"📅 Неделя: {stats['week_start']}\n\n"
         f"📋 Запланировано: {bs['planned']}\n"
         f"▶️ Активных: {bs['active']}\n"
@@ -384,7 +390,7 @@ async def _do_stats(message: Message, target_id: int):
         f"⏱ Фактически: {stats['total_actual_min']} мин"
     )
 
-    await message.answer(text, parse_mode="Markdown", reply_markup=admin_menu_keyboard())
+    await message.answer(text, parse_mode="HTML", reply_markup=admin_menu_keyboard())
 
 
 # === Список пользователей ===
@@ -403,16 +409,16 @@ async def admin_list_users(callback: CallbackQuery, allowed_user: AllowedUser):
         await callback.answer()
         return
 
-    lines = ["👥 *Список пользователей:*\n"]
+    lines = ["👥 <b>Список пользователей:</b>\n"]
     for u in users:
         status = "✅" if u.is_active else "🔇"
         admin_badge = " 👑" if u.is_admin else ""
-        name = _user_display(u)
-        lines.append(f"{status} {name} (`{u.telegram_id}`){admin_badge}")
+        name = _esc(_user_display(u))
+        lines.append(f"{status} {name} (<code>{u.telegram_id}</code>){admin_badge}")
 
     await callback.message.answer(
         "\n".join(lines),
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=admin_menu_keyboard(),
     )
     await callback.answer()
@@ -536,11 +542,11 @@ async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext, allo
         return
 
     await callback.message.answer(
-        "📢 *Рассылка всем пользователям*\n\n"
-        "Введите текст сообщения (поддерживается Markdown).\n"
-        "Отмена — любая команда `/...`",
+        "📢 <b>Рассылка всем пользователям</b>\n\n"
+        "Введите текст сообщения (поддерживается HTML).\n"
+        "Отмена — любая команда <code>/...</code>",
         reply_markup=ForceReply(selective=True),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_broadcast_text)
     await callback.answer()
@@ -562,8 +568,8 @@ async def admin_broadcast_process(message: Message, state: FSMContext, allowed_u
     sent = await send_custom_broadcast(message.bot, text, allowed_user.telegram_id)
 
     await message.answer(
-        f"✅ Рассылка отправлена: *{sent}* пользователей.",
-        parse_mode="Markdown",
+        f"✅ Рассылка отправлена: <b>{sent}</b> пользователей.",
+        parse_mode="HTML",
         reply_markup=admin_menu_keyboard(),
     )
     await state.clear()
