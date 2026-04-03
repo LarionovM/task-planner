@@ -183,7 +183,7 @@ async def delete_allowed_user(
     # logs → task_blocks → tasks → weekly_goals → weekly_schedule →
     # spam_config → categories → users → allowed_users
     user_id_tables = [
-        "logs", "task_blocks", "tasks", "weekly_goals",
+        "logs", "task_blocks", "events", "tasks", "weekly_goals",
         "weekly_schedule", "spam_config", "categories",
     ]
     for table in user_id_tables:
