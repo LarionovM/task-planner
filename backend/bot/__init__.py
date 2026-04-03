@@ -20,7 +20,7 @@ def create_bot() -> Bot:
     """Создаёт экземпляр бота."""
     return Bot(
         token=app_settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 
 
