@@ -3,7 +3,7 @@
 import logging
 from datetime import time
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import DEFAULT_CATEGORIES, DEFAULT_SCHEDULE, settings
@@ -173,11 +173,33 @@ async def toggle_user_active(
 async def delete_allowed_user(
     session: AsyncSession, telegram_id: int
 ) -> bool:
-    """Удалить пользователя из whitelist."""
+    """Удалить пользователя из whitelist вместе со всеми его данными."""
     user = await get_allowed_user(session, telegram_id)
     if user is None:
         return False
-    await session.delete(user)
+
+    # Удаляем в правильном порядке через raw SQL, т.к. async SQLAlchemy
+    # не загружает дочерние записи автоматически (нет lazy load).
+    # logs → task_blocks → tasks → weekly_goals → weekly_schedule →
+    # spam_config → categories → users → allowed_users
+    user_id_tables = [
+        "logs", "task_blocks", "tasks", "weekly_goals",
+        "weekly_schedule", "spam_config", "categories",
+    ]
+    for table in user_id_tables:
+        await session.execute(
+            text(f"DELETE FROM {table} WHERE user_id = :tid"),
+            {"tid": telegram_id},
+        )
+
+    await session.execute(
+        text("DELETE FROM users WHERE telegram_id = :tid"),
+        {"tid": telegram_id},
+    )
+    await session.execute(
+        text("DELETE FROM allowed_users WHERE telegram_id = :tid"),
+        {"tid": telegram_id},
+    )
     await session.flush()
     logger.info(f"Пользователь {telegram_id} удалён из whitelist")
     return True
